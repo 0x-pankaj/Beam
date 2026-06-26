@@ -19,6 +19,7 @@ export type Magic = MagicBase<[EVMExtension]>;
 type MagicContextType = {
   magic: Magic | null;
   address: string | null;
+  email: string | null;
   isLoggedIn: boolean;
   loginWithEmailOTP: (email: string) => Promise<string>;
   logout: () => Promise<void>;
@@ -27,6 +28,7 @@ type MagicContextType = {
 const MagicContext = createContext<MagicContextType>({
   magic: null,
   address: null,
+  email: null,
   isLoggedIn: false,
   loginWithEmailOTP: async () => "",
   logout: async () => {},
@@ -46,6 +48,7 @@ async function readAddress(m: Magic): Promise<string> {
 export const MagicProvider = ({ children }: { children: ReactNode }) => {
   const [magic, setMagic] = useState<Magic | null>(null);
   const [address, setAddress] = useState<string | null>(null);
+  const [email, setEmail] = useState<string | null>(null);
 
   useEffect(() => {
     const key = process.env.NEXT_PUBLIC_MAGIC_API_KEY;
@@ -70,18 +73,21 @@ export const MagicProvider = ({ children }: { children: ReactNode }) => {
       if (loggedIn) {
         const addr = await readAddress(m);
         setAddress(addr);
+        setEmail(localStorage.getItem("user_email"));
         localStorage.setItem("user", addr);
       }
     });
   }, []);
 
   const loginWithEmailOTP = useCallback(
-    async (email: string) => {
+    async (emailInput: string) => {
       if (!magic) throw new Error("Magic not ready");
-      await magic.auth.loginWithEmailOTP({ email });
+      await magic.auth.loginWithEmailOTP({ email: emailInput });
       const addr = await readAddress(magic);
       setAddress(addr);
+      setEmail(emailInput);
       localStorage.setItem("user", addr);
+      localStorage.setItem("user_email", emailInput);
       return addr;
     },
     [magic],
@@ -90,18 +96,21 @@ export const MagicProvider = ({ children }: { children: ReactNode }) => {
   const logout = useCallback(async () => {
     if (magic) await magic.user.logout();
     setAddress(null);
+    setEmail(null);
     localStorage.removeItem("user");
+    localStorage.removeItem("user_email");
   }, [magic]);
 
   const value = useMemo(
     () => ({
       magic,
       address,
+      email,
       isLoggedIn: !!address,
       loginWithEmailOTP,
       logout,
     }),
-    [magic, address, loginWithEmailOTP, logout],
+    [magic, address, email, loginWithEmailOTP, logout],
   );
 
   return <MagicContext.Provider value={value}>{children}</MagicContext.Provider>;
