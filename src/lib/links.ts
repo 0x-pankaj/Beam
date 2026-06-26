@@ -15,7 +15,7 @@
  */
 
 export type Reason = "rent" | "split" | "gift" | "tip" | "none";
-export type LinkStatus = "pending" | "claiming" | "paid";
+export type LinkStatus = "pending" | "claiming" | "sending" | "paid";
 
 export type BeamLink = {
   id: string;

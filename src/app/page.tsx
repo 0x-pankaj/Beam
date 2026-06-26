@@ -146,6 +146,9 @@ function Dashboard() {
     setPayingId(link.id);
     setToast(null);
     try {
+      // Flip the recipient's view to "settling" the moment we start.
+      await fetch(`/api/links/${link.id}/sending`, { method: "POST" });
+      await loadLinks();
       const res = await sendUsdcToArbitrum(link.amountUsd, link.claimantAddress);
       await fetch(`/api/links/${link.id}/paid`, {
         method: "POST",
@@ -375,6 +378,7 @@ function Activity({
               {l.status === "pending" && "Waiting to be claimed"}
               {l.status === "claiming" &&
                 `${l.claimantEmail ?? short(l.claimantAddress)} is claiming`}
+              {l.status === "sending" && "Settling on Arbitrum…"}
               {l.status === "paid" && "Settled on Arbitrum ✓"}
             </p>
           </div>
@@ -388,6 +392,7 @@ function Activity({
             </button>
           )}
           {l.status === "pending" && <Badge>Pending</Badge>}
+          {l.status === "sending" && <Badge>Sending…</Badge>}
           {l.status === "paid" && <Badge tone="success">Paid</Badge>}
         </div>
       ))}

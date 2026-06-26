@@ -134,7 +134,12 @@ export default function ClaimClient({ id }: { id: string }) {
             <div className="flex flex-col items-center gap-2">
               <div className="h-6 w-6 animate-spin rounded-full border-2 border-[var(--accent)] border-t-transparent" />
               <p className="text-sm text-[var(--muted)]">
-                On its way — settling on Arbitrum…
+                {link.status === "sending"
+                  ? "On its way — settling on Arbitrum…"
+                  : `Waiting for ${from} to approve…`}
+              </p>
+              <p className="text-xs text-[var(--muted)]">
+                You&apos;re all set — keep this page open.
               </p>
             </div>
           )}
