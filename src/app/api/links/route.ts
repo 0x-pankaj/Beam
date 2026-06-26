@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
   if (!senderAddress)
     return NextResponse.json({ error: "missing sender" }, { status: 400 });
 
-  const link = createLink({
+  const link = await createLink({
     amountUsd: String(amountUsd),
     reason: REASONS.includes(reason) ? reason : "none",
     note: note ? String(note).slice(0, 140) : undefined,
@@ -33,5 +33,5 @@ export async function GET(req: NextRequest) {
   const sender = req.nextUrl.searchParams.get("sender");
   if (!sender)
     return NextResponse.json({ error: "missing sender" }, { status: 400 });
-  return NextResponse.json(listLinksBySender(sender));
+  return NextResponse.json(await listLinksBySender(sender));
 }

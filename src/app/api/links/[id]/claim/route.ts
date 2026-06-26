@@ -7,7 +7,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
-  const link = getLink(id);
+  const link = await getLink(id);
   if (!link) return NextResponse.json({ error: "not found" }, { status: 404 });
   if (link.status === "paid")
     return NextResponse.json({ error: "already paid" }, { status: 409 });
@@ -17,7 +17,7 @@ export async function POST(
   if (!claimantAddress)
     return NextResponse.json({ error: "missing claimant" }, { status: 400 });
 
-  const next = updateLink(id, {
+  const next = await updateLink(id, {
     status: "claiming",
     claimantAddress: String(claimantAddress),
     claimantEmail: body?.claimantEmail

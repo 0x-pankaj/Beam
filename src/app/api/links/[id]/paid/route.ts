@@ -7,14 +7,14 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
-  const link = getLink(id);
+  const link = await getLink(id);
   if (!link) return NextResponse.json({ error: "not found" }, { status: 404 });
 
   const body = await req.json().catch(() => null);
   const txId = body?.txId;
   if (!txId) return NextResponse.json({ error: "missing txId" }, { status: 400 });
 
-  const next = updateLink(id, {
+  const next = await updateLink(id, {
     status: "paid",
     txId: String(txId),
     paidAt: Date.now(),

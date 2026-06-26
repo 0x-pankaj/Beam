@@ -5,6 +5,7 @@ import { useMagic } from "@/providers/MagicProvider";
 import { useUniversalAccount } from "@/providers/UniversalAccountProvider";
 import { REASON_META, type BeamLink, type Reason } from "@/lib/links";
 import { claimUrl, short, usd } from "@/lib/format";
+import { chainName } from "@/lib/chains";
 
 const PRESETS: Reason[] = ["rent", "split", "gift", "tip"];
 
@@ -74,9 +75,23 @@ function Landing() {
         {error && <p className="text-xs text-[var(--danger)]">{error}</p>}
       </div>
 
+      <div className="grid grid-cols-3 gap-2 text-center">
+        {[
+          { e: "🔗", t: "Make a link" },
+          { e: "📨", t: "Share it" },
+          { e: "✨", t: "They tap to claim" },
+        ].map((s) => (
+          <div key={s.t} className="card !p-3">
+            <div className="text-2xl">{s.e}</div>
+            <div className="mt-1 text-xs text-[var(--muted)]">{s.t}</div>
+          </div>
+        ))}
+      </div>
+
       <p className="text-center text-xs text-[var(--muted)]">
-        Chain-abstracted by Particle Universal Accounts · Magic · settles on
-        Arbitrum
+        No wallet. No seed phrase. No chain picker.
+        <br />
+        Powered by Particle Universal Accounts · Magic · settles on Arbitrum
       </p>
     </div>
   );
@@ -86,7 +101,7 @@ function Landing() {
 
 function Dashboard() {
   const { address, email, logout } = useMagic();
-  const { totalUsd, loading, refreshBalance, sendUsdcToArbitrum } =
+  const { totalUsd, primaryAssets, loading, refreshBalance, sendUsdcToArbitrum } =
     useUniversalAccount();
   const [links, setLinks] = useState<BeamLink[]>([]);
   const [payingId, setPayingId] = useState<string | null>(null);
@@ -152,6 +167,13 @@ function Dashboard() {
         <p className="text-xs text-[var(--muted)]">
           one balance · every chain · no chain picker
         </p>
+        <ChainBreakdown assets={primaryAssets?.assets} />
+        {!loading && totalUsd <= 0 && (
+          <p className="mt-3 rounded-xl bg-[var(--surface-2)] px-3 py-2 text-xs text-[var(--muted)]">
+            Add a little USDC on any chain to start sending — Beam routes it
+            automatically.
+          </p>
+        )}
       </section>
 
       <RequestForm
@@ -349,6 +371,41 @@ function Activity({
         </div>
       ))}
     </section>
+  );
+}
+
+/** Shows where the unified balance actually lives — the UA magic, made visible. */
+function ChainBreakdown({
+  assets,
+}: {
+  assets?: {
+    chainAggregation: { token: { chainId: number }; amountInUSD: number }[];
+  }[];
+}) {
+  if (!assets?.length) return null;
+  const byChain = new Map<number, number>();
+  for (const a of assets) {
+    for (const c of a.chainAggregation) {
+      if (c.amountInUSD > 0)
+        byChain.set(
+          c.token.chainId,
+          (byChain.get(c.token.chainId) ?? 0) + c.amountInUSD,
+        );
+    }
+  }
+  const rows = [...byChain.entries()].sort((a, b) => b[1] - a[1]);
+  if (!rows.length) return null;
+  return (
+    <div className="mt-3 flex flex-wrap justify-center gap-1.5">
+      {rows.map(([id, amt]) => (
+        <span
+          key={id}
+          className="rounded-full border border-[var(--border)] bg-[var(--surface-2)] px-2.5 py-1 text-xs text-[var(--muted)]"
+        >
+          {chainName(id)} {usd(amt)}
+        </span>
+      ))}
+    </div>
   );
 }
 

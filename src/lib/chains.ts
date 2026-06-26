@@ -31,6 +31,21 @@ export const USDC: Record<number, string> = {
 /** USDC on the settlement chain — the token a Beam recipient receives. */
 export const SETTLEMENT_USDC = USDC[SETTLEMENT_CHAIN_ID];
 
+/** Human names for the chains UA can aggregate balances across. */
+export const CHAIN_NAMES: Record<number, string> = {
+  1: "Ethereum",
+  10: "Optimism",
+  56: "BNB",
+  137: "Polygon",
+  8453: "Base",
+  42161: "Arbitrum",
+  43114: "Avalanche",
+  59144: "Linea",
+  101: "Solana",
+};
+
+export const chainName = (id: number) => CHAIN_NAMES[id] ?? `Chain ${id}`;
+
 export const arbiscanTx = (hash: string) => `https://arbiscan.io/tx/${hash}`;
 export const universalxActivity = (id: string) =>
   `https://universalx.app/activity/details?id=${id}`;
