@@ -66,7 +66,7 @@ function Landing() {
         >
           {busy ? "Check your email…" : "Continue"}
         </button>
-        {!magic && (
+        {!process.env.NEXT_PUBLIC_MAGIC_API_KEY && (
           <p className="text-xs text-[var(--danger)]">
             Magic key missing — set NEXT_PUBLIC_MAGIC_API_KEY in .env.local
           </p>
