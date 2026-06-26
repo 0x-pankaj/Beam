@@ -1,6 +1,7 @@
 "use client";
 
 import { EVMExtension } from "@magic-ext/evm";
+import { OAuthExtension } from "@magic-ext/oauth2";
 import { BrowserProvider, type Eip1193Provider } from "ethers";
 import { Magic as MagicBase } from "magic-sdk";
 import {
@@ -13,15 +14,20 @@ import {
   useState,
 } from "react";
 import { DELEGATION_CHAIN_ID } from "@/lib/chains";
+import { emailFromIdToken, promptGoogleOneTap } from "@/lib/gsi";
 
-export type Magic = MagicBase<[EVMExtension]>;
+export type Magic = MagicBase<[EVMExtension, OAuthExtension]>;
+
+const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
 
 type MagicContextType = {
   magic: Magic | null;
   address: string | null;
   email: string | null;
   isLoggedIn: boolean;
+  googleEnabled: boolean;
   loginWithEmailOTP: (email: string) => Promise<string>;
+  loginWithGoogle: () => Promise<string>;
   logout: () => Promise<void>;
 };
 
@@ -30,7 +36,9 @@ const MagicContext = createContext<MagicContextType>({
   address: null,
   email: null,
   isLoggedIn: false,
+  googleEnabled: false,
   loginWithEmailOTP: async () => "",
+  loginWithGoogle: async () => "",
   logout: async () => {},
 });
 
@@ -64,6 +72,7 @@ export const MagicProvider = ({ children }: { children: ReactNode }) => {
             default: true,
           },
         ]),
+        new OAuthExtension(),
       ],
     });
     setMagic(m);
@@ -93,6 +102,23 @@ export const MagicProvider = ({ children }: { children: ReactNode }) => {
     [magic],
   );
 
+  const loginWithGoogle = useCallback(async () => {
+    if (!magic) throw new Error("Magic not ready");
+    if (!GOOGLE_CLIENT_ID) throw new Error("Google login not configured");
+    const jwt = await promptGoogleOneTap(GOOGLE_CLIENT_ID);
+    await magic.oauth2.loginWithGoogleIdToken({
+      jwt,
+      googleClientId: GOOGLE_CLIENT_ID,
+    });
+    const addr = await readAddress(magic);
+    const mail = emailFromIdToken(jwt);
+    setAddress(addr);
+    setEmail(mail);
+    localStorage.setItem("user", addr);
+    if (mail) localStorage.setItem("user_email", mail);
+    return addr;
+  }, [magic]);
+
   const logout = useCallback(async () => {
     if (magic) await magic.user.logout();
     setAddress(null);
@@ -107,10 +133,12 @@ export const MagicProvider = ({ children }: { children: ReactNode }) => {
       address,
       email,
       isLoggedIn: !!address,
+      googleEnabled: !!GOOGLE_CLIENT_ID,
       loginWithEmailOTP,
+      loginWithGoogle,
       logout,
     }),
-    [magic, address, email, loginWithEmailOTP, logout],
+    [magic, address, email, loginWithEmailOTP, loginWithGoogle, logout],
   );
 
   return <MagicContext.Provider value={value}>{children}</MagicContext.Provider>;

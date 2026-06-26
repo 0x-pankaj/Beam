@@ -6,6 +6,7 @@ import { useUniversalAccount } from "@/providers/UniversalAccountProvider";
 import { REASON_META, type BeamLink, type Reason } from "@/lib/links";
 import { claimUrl, short, usd } from "@/lib/format";
 import { chainName } from "@/lib/chains";
+import { GoogleGlyph } from "@/components/GoogleGlyph";
 
 const PRESETS: Reason[] = ["rent", "split", "gift", "tip"];
 
@@ -19,22 +20,25 @@ export default function Home() {
 /* ───────────────────────────── Landing (logged-out) ─────────────────────── */
 
 function Landing() {
-  const { magic, loginWithEmailOTP } = useMagic();
+  const { magic, googleEnabled, loginWithGoogle, loginWithEmailOTP } =
+    useMagic();
   const [email, setEmail] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<"google" | "email" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const signIn = async () => {
-    setBusy(true);
+  const run = async (kind: "google" | "email", fn: () => Promise<unknown>) => {
+    setBusy(kind);
     setError(null);
     try {
-      await loginWithEmailOTP(email);
+      await fn();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   };
+
+  const signIn = () => run("email", () => loginWithEmailOTP(email));
 
   return (
     <div className="flex flex-1 flex-col justify-center gap-8">
@@ -51,6 +55,23 @@ function Landing() {
         <label className="text-sm text-[var(--muted)]">
           Sign in to send or claim
         </label>
+        {googleEnabled && (
+          <>
+            <button
+              className="btn btn-ghost"
+              disabled={busy !== null || !magic}
+              onClick={() => run("google", loginWithGoogle)}
+            >
+              <GoogleGlyph />
+              {busy === "google" ? "Connecting…" : "Continue with Google"}
+            </button>
+            <div className="flex items-center gap-3 text-xs text-[var(--muted)]">
+              <span className="h-px flex-1 bg-[var(--border)]" />
+              or
+              <span className="h-px flex-1 bg-[var(--border)]" />
+            </div>
+          </>
+        )}
         <input
           className="input"
           type="email"
@@ -62,10 +83,10 @@ function Landing() {
         />
         <button
           className="btn btn-primary"
-          disabled={!email || busy || !magic}
+          disabled={!email || busy !== null || !magic}
           onClick={signIn}
         >
-          {busy ? "Check your email…" : "Continue"}
+          {busy === "email" ? "Check your email…" : "Continue with email"}
         </button>
         {!process.env.NEXT_PUBLIC_MAGIC_API_KEY && (
           <p className="text-xs text-[var(--danger)]">

@@ -5,9 +5,18 @@ import { useMagic } from "@/providers/MagicProvider";
 import { REASON_META, type BeamLink } from "@/lib/links";
 import { usd } from "@/lib/format";
 import { universalxActivity } from "@/lib/chains";
+import { GoogleGlyph } from "@/components/GoogleGlyph";
 
 export default function ClaimClient({ id }: { id: string }) {
-  const { magic, address, email, isLoggedIn, loginWithEmailOTP } = useMagic();
+  const {
+    magic,
+    address,
+    email,
+    isLoggedIn,
+    googleEnabled,
+    loginWithEmailOTP,
+    loginWithGoogle,
+  } = useMagic();
   const [link, setLink] = useState<BeamLink | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -39,17 +48,19 @@ export default function ClaimClient({ id }: { id: string }) {
     }).then(load);
   }, [isLoggedIn, address, email, link, id, load]);
 
-  const signIn = async (emailInput: string) => {
+  const run = async (fn: () => Promise<unknown>) => {
     setBusy(true);
     setError(null);
     try {
-      await loginWithEmailOTP(emailInput);
+      await fn();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
   };
+  const signIn = (emailInput: string) => run(() => loginWithEmailOTP(emailInput));
+  const signInGoogle = () => run(loginWithGoogle);
 
   if (notFound)
     return (
@@ -112,7 +123,13 @@ export default function ClaimClient({ id }: { id: string }) {
 
         <div className="mt-6">
           {!isLoggedIn ? (
-            <ClaimLogin busy={busy} disabled={!magic} onSignIn={signIn} />
+            <ClaimLogin
+              busy={busy}
+              disabled={!magic}
+              googleEnabled={googleEnabled}
+              onSignIn={signIn}
+              onGoogle={signInGoogle}
+            />
           ) : (
             <div className="flex flex-col items-center gap-2">
               <div className="h-6 w-6 animate-spin rounded-full border-2 border-[var(--accent)] border-t-transparent" />
@@ -134,15 +151,36 @@ export default function ClaimClient({ id }: { id: string }) {
 function ClaimLogin({
   busy,
   disabled,
+  googleEnabled,
   onSignIn,
+  onGoogle,
 }: {
   busy: boolean;
   disabled: boolean;
+  googleEnabled: boolean;
   onSignIn: (email: string) => void;
+  onGoogle: () => void;
 }) {
   const [email, setEmail] = useState("");
   return (
     <div className="flex flex-col gap-3">
+      {googleEnabled && (
+        <>
+          <button
+            className="btn btn-primary"
+            disabled={busy || disabled}
+            onClick={onGoogle}
+          >
+            <GoogleGlyph />
+            {busy ? "Connecting…" : "Claim with Google"}
+          </button>
+          <div className="flex items-center gap-3 text-xs text-[var(--muted)]">
+            <span className="h-px flex-1 bg-[var(--border)]" />
+            or
+            <span className="h-px flex-1 bg-[var(--border)]" />
+          </div>
+        </>
+      )}
       <input
         className="input"
         type="email"
@@ -153,11 +191,11 @@ function ClaimLogin({
         onKeyDown={(e) => e.key === "Enter" && email && onSignIn(email)}
       />
       <button
-        className="btn btn-primary"
+        className={googleEnabled ? "btn btn-ghost" : "btn btn-primary"}
         disabled={!email || busy || disabled}
         onClick={() => onSignIn(email)}
       >
-        {busy ? "Check your email…" : "Claim your money"}
+        {busy ? "…" : "Claim with email"}
       </button>
     </div>
   );

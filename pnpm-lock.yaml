@@ -11,6 +11,9 @@ importers:
       '@magic-ext/evm':
         specifier: ^1.5.1
         version: 1.5.1
+      '@magic-ext/oauth2':
+        specifier: ^15.8.0
+        version: 15.8.0
       '@particle-network/universal-account-sdk':
         specifier: ^1.1.1
         version: 1.1.1(bufferutil@4.1.0)(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@4.4.3)
@@ -536,6 +539,9 @@ packages:
 
   '@magic-ext/evm@1.5.1':
     resolution: {integrity: sha512-Md38x8vW1TpZjIoTVxP0puqeGA8ugftiDoEff2MyK15eGDLyM6PcFMCoouvD3QZNiVw69iJNUVqxsoszPyhWmQ==}
+
+  '@magic-ext/oauth2@15.8.0':
+    resolution: {integrity: sha512-AcoGzauJXu6uJJV1lB/uL/m4XbUdvF6pi7slkT9B2SmH7XmVEFhrZYArWteCxjm2Jga8MdwDTLDNaoFDpDGhZA==}
 
   '@magic-sdk/provider@33.7.1':
     resolution: {integrity: sha512-RO0Oj7K4X8NmUc44Bz4PEFHAhCdU16GHJUIPmJ+UfWfllp2P3MiMdsCosH+5tJr0dgju9gySarNcwjDCDrEMTw==}
@@ -3084,6 +3090,10 @@ snapshots:
       '@jridgewell/sourcemap-codec': 1.5.5
 
   '@magic-ext/evm@1.5.1': {}
+
+  '@magic-ext/oauth2@15.8.0':
+    dependencies:
+      crypto-js: 4.2.0
 
   '@magic-sdk/provider@33.7.1(localforage@1.10.0)':
     dependencies:
