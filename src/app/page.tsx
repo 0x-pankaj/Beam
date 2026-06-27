@@ -127,6 +127,14 @@ function Dashboard() {
   const [links, setLinks] = useState<BeamLink[]>([]);
   const [payingId, setPayingId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [copiedAddr, setCopiedAddr] = useState(false);
+
+  const copyAddress = () => {
+    if (!address) return;
+    navigator.clipboard.writeText(address);
+    setCopiedAddr(true);
+    setTimeout(() => setCopiedAddr(false), 1500);
+  };
 
   const loadLinks = useCallback(async () => {
     if (!address) return;
@@ -159,6 +167,18 @@ function Dashboard() {
       await Promise.all([loadLinks(), refreshBalance()]);
     } catch (e) {
       setToast(e instanceof Error ? e.message : String(e));
+      // Roll the link back to "claiming" so it isn't stuck on "Sending…".
+      if (link.claimantAddress) {
+        await fetch(`/api/links/${link.id}/claim`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            claimantAddress: link.claimantAddress,
+            claimantEmail: link.claimantEmail,
+          }),
+        });
+        await loadLinks();
+      }
     } finally {
       setPayingId(null);
     }
@@ -197,6 +217,15 @@ function Dashboard() {
             Add a little USDC on any chain to start sending — Beam routes it
             automatically.
           </p>
+        )}
+        {address && (
+          <button
+            onClick={copyAddress}
+            className="mx-auto mt-3 block rounded-full border border-[var(--border)] bg-[var(--surface-2)] px-3 py-1.5 text-xs text-[var(--muted)]"
+            title="Deposit USDC to this address on any supported chain"
+          >
+            {copiedAddr ? "Address copied ✓" : `Deposit address: ${short(address)} · copy`}
+          </button>
         )}
       </section>
 
