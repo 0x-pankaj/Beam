@@ -16,15 +16,20 @@
 
 export type Reason = "rent" | "split" | "gift" | "tip" | "none";
 export type LinkStatus = "pending" | "claiming" | "sending" | "paid";
+/** "send" = creator pays the opener (walletless claim). "request" = opener pays the creator. */
+export type Direction = "send" | "request";
 
 export type BeamLink = {
   id: string;
+  direction: Direction;
   amountUsd: string;
   reason: Reason;
   note?: string;
+  /** The link's creator. For "send" they pay; for "request" they receive. */
   senderAddress: string;
   senderName?: string;
   status: LinkStatus;
+  /** The other party (opener). For "send" they receive; for "request" they pay. */
   claimantAddress?: string;
   claimantEmail?: string;
   txId?: string;
@@ -42,7 +47,7 @@ export const REASON_META: Record<Reason, { label: string; emoji: string }> = {
 
 export type CreateInput = Pick<
   BeamLink,
-  "amountUsd" | "reason" | "note" | "senderAddress" | "senderName"
+  "direction" | "amountUsd" | "reason" | "note" | "senderAddress" | "senderName"
 >;
 
 interface LinkStore {
@@ -63,6 +68,7 @@ function genId(): string {
 function buildLink(input: CreateInput): BeamLink {
   return {
     id: genId(),
+    direction: input.direction === "request" ? "request" : "send",
     amountUsd: input.amountUsd,
     reason: input.reason,
     note: input.note,

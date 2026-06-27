@@ -12,13 +12,14 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
   if (!body) return NextResponse.json({ error: "bad json" }, { status: 400 });
 
-  const { amountUsd, reason, note, senderAddress, senderName } = body;
+  const { direction, amountUsd, reason, note, senderAddress, senderName } = body;
   if (!amountUsd || Number(amountUsd) <= 0)
     return NextResponse.json({ error: "invalid amount" }, { status: 400 });
   if (!senderAddress)
     return NextResponse.json({ error: "missing sender" }, { status: 400 });
 
   const link = await createLink({
+    direction: direction === "request" ? "request" : "send",
     amountUsd: String(amountUsd),
     reason: REASONS.includes(reason) ? reason : "none",
     note: note ? String(note).slice(0, 140) : undefined,

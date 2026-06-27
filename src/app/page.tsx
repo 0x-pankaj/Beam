@@ -3,7 +3,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { useMagic } from "@/providers/MagicProvider";
 import { useUniversalAccount } from "@/providers/UniversalAccountProvider";
-import { REASON_META, type BeamLink, type Reason } from "@/lib/links";
+import {
+  REASON_META,
+  type BeamLink,
+  type Direction,
+  type Reason,
+} from "@/lib/links";
 import { claimUrl, short, usd } from "@/lib/format";
 import { chainName } from "@/lib/chains";
 import { GoogleGlyph } from "@/components/GoogleGlyph";
@@ -229,7 +234,7 @@ function Dashboard() {
         )}
       </section>
 
-      <SendForm
+      <LinkForm
         address={address!}
         senderName={email ?? undefined}
         onCreated={loadLinks}
@@ -246,9 +251,9 @@ function Dashboard() {
   );
 }
 
-/* ───────────────────────────── Send form ────────────────────────────────── */
+/* ───────────────────────────── Link form (send / request) ───────────────── */
 
-function SendForm({
+function LinkForm({
   address,
   senderName,
   onCreated,
@@ -257,6 +262,7 @@ function SendForm({
   senderName?: string;
   onCreated: () => void;
 }) {
+  const [mode, setMode] = useState<Direction>("send");
   const [amount, setAmount] = useState("");
   const [reason, setReason] = useState<Reason>("none");
   const [note, setNote] = useState("");
@@ -271,6 +277,7 @@ function SendForm({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          direction: mode,
           amountUsd: amount,
           reason,
           note: note || undefined,
@@ -298,13 +305,13 @@ function SendForm({
   const share = async () => {
     if (!created) return;
     const url = claimUrl(created.id);
+    const text =
+      created.direction === "request"
+        ? `Can you send me ${usd(created.amountUsd)}?`
+        : `${usd(created.amountUsd)} for you`;
     try {
       if (navigator.share) {
-        await navigator.share({
-          title: "Beam",
-          text: `${usd(created.amountUsd)} for you`,
-          url,
-        });
+        await navigator.share({ title: "Beam", text, url });
       } else {
         await navigator.clipboard.writeText(url);
         setCopied(true);
@@ -315,15 +322,23 @@ function SendForm({
   };
 
   if (created) {
+    const isReq = created.direction === "request";
     return (
       <div className="card animate-pop flex flex-col gap-3">
-        <p className="text-sm text-[var(--muted)]">Link ready — share it</p>
+        <p className="text-sm text-[var(--muted)]">
+          {isReq ? "Request ready — share it" : "Link ready — share it"}
+        </p>
         <p className="text-2xl font-bold">
           {REASON_META[created.reason].emoji} {usd(created.amountUsd)}
         </p>
         <div className="truncate rounded-xl bg-[var(--surface-2)] px-3 py-2 text-xs text-[var(--accent-2)]">
           {claimUrl(created.id)}
         </div>
+        <p className="text-xs text-[var(--muted)]">
+          {isReq
+            ? "Send this to whoever owes you — they pay with a tap."
+            : "Send this to whoever you're paying — they claim with a tap."}
+        </p>
         <div className="flex gap-2">
           <button className="btn btn-primary flex-1" onClick={share}>
             {copied ? "Copied ✓" : "Share link"}
@@ -338,8 +353,26 @@ function SendForm({
 
   return (
     <div className="card flex flex-col gap-3">
+      {/* Send / Request toggle */}
+      <div className="grid grid-cols-2 gap-1 rounded-2xl bg-[var(--surface-2)] p-1">
+        {(["send", "request"] as Direction[]).map((m) => (
+          <button
+            key={m}
+            onClick={() => setMode(m)}
+            className="rounded-xl py-2 text-sm font-semibold capitalize transition-colors"
+            style={{
+              background: mode === m ? "var(--accent)" : "transparent",
+              color: mode === m ? "white" : "var(--muted)",
+            }}
+          >
+            {m}
+          </button>
+        ))}
+      </div>
       <p className="text-sm text-[var(--muted)]">
-        Send money — they claim it with a tap
+        {mode === "request"
+          ? "Request money — they pay with a tap"
+          : "Send money — they claim it with a tap"}
       </p>
       <div className="flex items-center gap-2">
         <span className="text-3xl font-bold text-[var(--muted)]">$</span>
@@ -375,7 +408,11 @@ function SendForm({
         disabled={!amount || Number(amount) <= 0 || busy}
         onClick={create}
       >
-        {busy ? "Creating…" : "Create payment link"}
+        {busy
+          ? "Creating…"
+          : mode === "request"
+            ? "Create request link"
+            : "Create payment link"}
       </button>
     </div>
   );
@@ -404,16 +441,28 @@ function Activity({
           <div className="min-w-0">
             <p className="font-semibold">
               {REASON_META[l.reason].emoji} {usd(l.amountUsd)}
+              <span className="ml-2 text-xs font-normal text-[var(--muted)]">
+                {l.direction === "request" ? "request" : "sent"}
+              </span>
             </p>
             <p className="truncate text-xs text-[var(--muted)]">
-              {l.status === "pending" && "Waiting to be claimed"}
+              {l.status === "pending" &&
+                (l.direction === "request"
+                  ? "Waiting for payment"
+                  : "Waiting to be claimed")}
               {l.status === "claiming" &&
-                `${l.claimantEmail ?? short(l.claimantAddress)} is claiming`}
+                `${l.claimantEmail ?? short(l.claimantAddress)} is ${
+                  l.direction === "request" ? "paying" : "claiming"
+                }`}
               {l.status === "sending" && "Settling on Arbitrum…"}
-              {l.status === "paid" && "Settled on Arbitrum ✓"}
+              {l.status === "paid" &&
+                (l.direction === "request"
+                  ? "Received on Arbitrum ✓"
+                  : "Settled on Arbitrum ✓")}
             </p>
           </div>
-          {l.status === "claiming" && (
+          {/* Only "send" links need the creator to approve a payout. */}
+          {l.direction === "send" && l.status === "claiming" && (
             <button
               className="btn btn-primary !px-4 !py-2"
               disabled={payingId === l.id}
@@ -422,7 +471,9 @@ function Activity({
               {payingId === l.id ? "Sending…" : `Send ${usd(l.amountUsd)}`}
             </button>
           )}
-          {l.status === "pending" && <Badge>Pending</Badge>}
+          {l.status === "pending" && (
+            <Badge>{l.direction === "request" ? "Requested" : "Pending"}</Badge>
+          )}
           {l.status === "sending" && <Badge>Sending…</Badge>}
           {l.status === "paid" && <Badge tone="success">Paid</Badge>}
         </div>

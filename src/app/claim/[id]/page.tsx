@@ -14,10 +14,14 @@ export async function generateMetadata({
 
   const amount = `$${Number(link.amountUsd).toLocaleString()}`;
   const who = link.senderName ?? "Someone";
-  const title = `${who} sent you ${amount} ${REASON_META[link.reason].emoji}`;
+  const emoji = REASON_META[link.reason].emoji;
+  const title =
+    link.direction === "request"
+      ? `${who} is requesting ${amount} ${emoji}`
+      : `${who} sent you ${amount} ${emoji}`;
   const description = link.note
-    ? `"${link.note}" — claim it with a tap. No wallet needed.`
-    : "Claim it with a tap on Beam. No wallet, no seed phrase.";
+    ? `"${link.note}" — settle it with a tap on Beam. No wallet needed.`
+    : "Settle it with a tap on Beam. No wallet, no seed phrase.";
 
   return {
     title,

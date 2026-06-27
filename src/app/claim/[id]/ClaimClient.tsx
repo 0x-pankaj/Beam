@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useMagic } from "@/providers/MagicProvider";
+import { useUniversalAccount } from "@/providers/UniversalAccountProvider";
 import { REASON_META, type BeamLink } from "@/lib/links";
 import { usd } from "@/lib/format";
 import { universalxActivity } from "@/lib/chains";
@@ -17,6 +18,7 @@ export default function ClaimClient({ id }: { id: string }) {
     loginWithEmailOTP,
     loginWithGoogle,
   } = useMagic();
+  const { totalUsd, sendUsdcToArbitrum } = useUniversalAccount();
   const [link, setLink] = useState<BeamLink | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -29,17 +31,17 @@ export default function ClaimClient({ id }: { id: string }) {
     if (res.ok) setLink(await res.json());
   }, [id]);
 
-  // Poll the link so "paid" arrives live once the sender pays.
+  // Poll so status changes (e.g. the sender approving) arrive live.
   useEffect(() => {
     load();
     const t = setInterval(load, 3000);
     return () => clearInterval(t);
   }, [load]);
 
-  // Once logged in, announce the claim (records my address for the sender).
+  // SEND links: once the recipient logs in, announce the claim (record address).
   useEffect(() => {
     if (!isLoggedIn || !address || !link || announced.current) return;
-    if (link.status === "paid") return;
+    if (link.direction !== "send" || link.status === "paid") return;
     announced.current = true;
     fetch(`/api/links/${id}/claim`, {
       method: "POST",
@@ -62,6 +64,37 @@ export default function ClaimClient({ id }: { id: string }) {
   const signIn = (emailInput: string) => run(() => loginWithEmailOTP(emailInput));
   const signInGoogle = () => run(loginWithGoogle);
 
+  // REQUEST links: the opener pays the creator, settling on Arbitrum.
+  const payRequest = () =>
+    run(async () => {
+      if (!link || !address) return;
+      await fetch(`/api/links/${id}/claim`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ claimantAddress: address, claimantEmail: email }),
+      });
+      await fetch(`/api/links/${id}/sending`, { method: "POST" });
+      await load();
+      try {
+        const res = await sendUsdcToArbitrum(link.amountUsd, link.senderAddress);
+        await fetch(`/api/links/${id}/paid`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ txId: res.transactionId }),
+        });
+        await load();
+      } catch (e) {
+        // Roll back so the request isn't stuck on "settling".
+        await fetch(`/api/links/${id}/claim`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ claimantAddress: address, claimantEmail: email }),
+        });
+        await load();
+        throw e;
+      }
+    });
+
   if (notFound)
     return (
       <main className="beam-shell items-center justify-center text-center">
@@ -80,18 +113,23 @@ export default function ClaimClient({ id }: { id: string }) {
 
   const meta = REASON_META[link.reason];
   const from = link.senderName ?? "Someone";
+  const isRequest = link.direction === "request";
 
-  // ── Paid: the money landed.
+  // ── Settled.
   if (link.status === "paid") {
     return (
       <main className="beam-shell items-center justify-center text-center">
         <Confetti />
-        <div className="animate-pop text-6xl">🎉</div>
+        <div className="animate-pop text-6xl">{isRequest ? "✅" : "🎉"}</div>
         <h1 className="animate-pop text-3xl font-black">
-          {usd(link.amountUsd)} received
+          {isRequest
+            ? `You paid ${usd(link.amountUsd)}`
+            : `${usd(link.amountUsd)} received`}
         </h1>
         <p className="text-[var(--muted)]">
-          Settled on Arbitrum — it&apos;s yours.
+          {isRequest
+            ? `Sent to ${from} — settled on Arbitrum.`
+            : "Settled on Arbitrum — it's yours."}
         </p>
         {link.txId && (
           <a
@@ -111,7 +149,9 @@ export default function ClaimClient({ id }: { id: string }) {
     <main className="beam-shell items-center justify-center">
       <div className="card w-full text-center">
         <div className="text-5xl">{meta.emoji}</div>
-        <p className="mt-3 text-sm text-[var(--muted)]">{from} is sending you</p>
+        <p className="mt-3 text-sm text-[var(--muted)]">
+          {from} is {isRequest ? "requesting" : "sending you"}
+        </p>
         <p className="my-1 text-5xl font-black tracking-tight">
           {usd(link.amountUsd)}
         </p>
@@ -127,10 +167,28 @@ export default function ClaimClient({ id }: { id: string }) {
               busy={busy}
               disabled={!magic}
               googleEnabled={googleEnabled}
+              cta={isRequest ? "Pay" : "Claim"}
               onSignIn={signIn}
               onGoogle={signInGoogle}
             />
+          ) : isRequest ? (
+            // Opener pays the request.
+            <div className="flex flex-col gap-2">
+              <button
+                className="btn btn-primary"
+                disabled={busy || link.status === "sending"}
+                onClick={payRequest}
+              >
+                {busy || link.status === "sending"
+                  ? "Settling on Arbitrum…"
+                  : `Pay ${usd(link.amountUsd)}`}
+              </button>
+              <p className="text-xs text-[var(--muted)]">
+                Your balance: {usd(totalUsd)} · settles to {from} on Arbitrum
+              </p>
+            </div>
           ) : (
+            // Recipient waits for the sender to approve a SEND link.
             <div className="flex flex-col items-center gap-2">
               <div className="h-6 w-6 animate-spin rounded-full border-2 border-[var(--accent)] border-t-transparent" />
               <p className="text-sm text-[var(--muted)]">
@@ -157,12 +215,14 @@ function ClaimLogin({
   busy,
   disabled,
   googleEnabled,
+  cta,
   onSignIn,
   onGoogle,
 }: {
   busy: boolean;
   disabled: boolean;
   googleEnabled: boolean;
+  cta: string;
   onSignIn: (email: string) => void;
   onGoogle: () => void;
 }) {
@@ -177,7 +237,7 @@ function ClaimLogin({
             onClick={onGoogle}
           >
             <GoogleGlyph />
-            {busy ? "Connecting…" : "Claim with Google"}
+            {busy ? "Connecting…" : `${cta} with Google`}
           </button>
           <div className="flex items-center gap-3 text-xs text-[var(--muted)]">
             <span className="h-px flex-1 bg-[var(--border)]" />
@@ -200,13 +260,13 @@ function ClaimLogin({
         disabled={!email || busy || disabled}
         onClick={() => onSignIn(email)}
       >
-        {busy ? "…" : "Claim with email"}
+        {busy ? "…" : `${cta} with email`}
       </button>
     </div>
   );
 }
 
-/** Lightweight CSS confetti burst for the claim success moment. */
+/** Lightweight CSS confetti burst for the success moment. */
 function Confetti() {
   const colors = ["#7c5cff", "#5ad1ff", "#34d399", "#fbbf24", "#fb7185"];
   const pieces = Array.from({ length: 28 });
