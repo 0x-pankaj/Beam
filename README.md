@@ -120,7 +120,7 @@ A single Next.js (App Router) application — UI, API, and chain logic in one de
 
 ## The payment-link lifecycle
 
-A link is a money **request**: the sender stays in control and funds move only on their approval. Status transitions are coordinated through the link store so the two parties' screens stay in sync in real time.
+A link is **money the sender controls**: the sender funds it and approves the release, so funds move only on their action — the recipient just claims. Status transitions are coordinated through the link store so the two parties' screens stay in sync in real time.
 
 ```
 Sender (Alice)                      Link store                    Recipient (Bob)

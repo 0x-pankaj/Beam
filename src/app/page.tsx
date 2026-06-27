@@ -200,7 +200,7 @@ function Dashboard() {
         )}
       </section>
 
-      <RequestForm
+      <SendForm
         address={address!}
         senderName={email ?? undefined}
         onCreated={loadLinks}
@@ -217,9 +217,9 @@ function Dashboard() {
   );
 }
 
-/* ───────────────────────────── Request form ─────────────────────────────── */
+/* ───────────────────────────── Send form ────────────────────────────────── */
 
-function RequestForm({
+function SendForm({
   address,
   senderName,
   onCreated,
@@ -309,7 +309,9 @@ function RequestForm({
 
   return (
     <div className="card flex flex-col gap-3">
-      <p className="text-sm text-[var(--muted)]">Request money</p>
+      <p className="text-sm text-[var(--muted)]">
+        Send money — they claim it with a tap
+      </p>
       <div className="flex items-center gap-2">
         <span className="text-3xl font-bold text-[var(--muted)]">$</span>
         <input
@@ -344,7 +346,7 @@ function RequestForm({
         disabled={!amount || Number(amount) <= 0 || busy}
         onClick={create}
       >
-        {busy ? "Creating…" : "Create link"}
+        {busy ? "Creating…" : "Create payment link"}
       </button>
     </div>
   );
