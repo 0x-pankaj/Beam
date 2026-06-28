@@ -189,10 +189,11 @@ Polling (3–4s) on both screens keeps the demo's two windows in lockstep.
 | Language | TypeScript |
 | Styling | Tailwind CSS v4 (custom fintech design system, mobile-first) |
 | Chain abstraction | `@particle-network/universal-account-sdk` (EIP-7702 mode) |
-| Wallet / auth | `magic-sdk`, `@magic-ext/evm`, `@magic-ext/oauth2` |
+| Wallet / auth | `magic-sdk`, `@magic-ext/evm`, `@magic-ext/oauth2` (Google One-Tap) |
 | Signing | `ethers` v6 |
 | Store | Upstash Redis / Vercel KV (REST) with in-memory fallback |
-| Hosting | Vercel |
+| QR / email | `qrcode.react` · Resend (optional) |
+| Hosting | Vercel (installable PWA) |
 | Package manager | pnpm |
 
 ## Project structure
@@ -200,20 +201,21 @@ Polling (3–4s) on both screens keeps the demo's two windows in lockstep.
 ```
 src/
 ├── app/
-│   ├── page.tsx                 # Landing + Dashboard (send/request/split, @handle)
+│   ├── page.tsx                 # Landing + Dashboard (pay people / create a campaign, @handle)
 │   ├── claim/[id]/
 │   │   ├── page.tsx             # Server component — Open Graph link previews
-│   │   └── ClaimClient.tsx      # Walletless claim / pay / split UI
+│   │   └── ClaimClient.tsx      # Claim/pay UI for all 5 directions (incl. product unlock)
 │   ├── u/[username]/
-│   │   ├── page.tsx             # @handle pay page (server + OG)
-│   │   └── UserPayClient.tsx    # Pay a username, settle on Arbitrum
+│   │   ├── page.tsx             # @handle storefront (server + OG)
+│   │   └── UserPayClient.tsx    # Pay a handle + list the creator's campaigns/products
 │   ├── api/
-│   │   ├── links/route.ts       # POST create · GET list-by-sender
-│   │   ├── links/[id]/route.ts  # GET one
+│   │   ├── links/route.ts       # POST create · GET list-by-sender (unlockUrl stripped)
+│   │   ├── links/[id]/route.ts  # GET one (unlockUrl stripped)
 │   │   ├── links/[id]/claim/    # POST recipient announces claim
 │   │   ├── links/[id]/sending/  # POST sender approved, settling
 │   │   ├── links/[id]/paid/     # POST settled (txId)
-│   │   ├── links/[id]/contribute/  # POST a split share
+│   │   ├── links/[id]/contribute/  # POST a campaign payment (split/fund/product)
+│   │   ├── links/[id]/unlock/   # GET product content — gated to addresses that paid
 │   │   ├── username/route.ts    # GET resolve/availability · POST claim handle
 │   │   ├── notify/route.ts      # POST email a link (Resend, optional)
 │   │   └── health/route.ts      # Store + config diagnostics
@@ -297,7 +299,8 @@ Real things discovered building on bleeding-edge SDKs:
 - No secrets are committed. `.env*` is gitignored; only public (`NEXT_PUBLIC_*`) values reach the client bundle, by design.
 - Upstash/KV credentials are server-side only and live in deployment env vars.
 - Universal Accounts have no private keys — ownership is delegated to the Magic-managed signer; the user authorizes each transaction.
-- Funds never move without an explicit action: a **send** link requires the creator's approval; **request**/**split** payments are signed by the payer.
+- Funds never move without an explicit action: a **send** link requires the creator's approval; **request**/**split**/**fund**/**product** payments are signed by the payer.
+- A product's **unlock content is server-side only** — stripped from every public response and returned solely to an address that has paid (purchase response + `/unlock` gate). (The gate trusts the client-submitted `txId`; on-chain verification is the production hardening step.)
 
 ## Limitations & roadmap
 
