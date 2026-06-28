@@ -68,6 +68,7 @@ Beam started as one-to-one send links and grew into a full chain-abstracted mone
 | --- | --- | --- |
 | 💸 | **Send links** | Creator pays; the recipient claims **walletless** (Google/email). The core wedge — the recipient needs no wallet. |
 | 🙋 | **Request links** | The opener pays the creator. The inverse of send, same one-tap settle on Arbitrum. |
+| 📷 | **Pay anyone** | Pay any external wallet by **address or ENS** (`name.eth`), or **scan their QR**. The universal scanner also opens Beam link QRs. Settles USDC to them on Arbitrum. |
 | 🍕 | **Split / group pay** | One link, **many payers** from different chains. A live **progress bar** fills as each person pays their share; confetti when funded. |
 | 🎯 | **Crowdfunding** | Open, goal-based campaigns — anyone backs any amount toward a target; raised-vs-goal updates live. |
 | 🛒 | **Sell paid programs** | Reusable fixed-price product links — unlimited buyers, each pays the price. **Pay-to-unlock**: buyers reveal the content (course/file/invite) only after paying. |
@@ -192,7 +193,7 @@ Polling (3–4s) on both screens keeps the demo's two windows in lockstep.
 | Wallet / auth | `magic-sdk`, `@magic-ext/evm`, `@magic-ext/oauth2` (Google One-Tap) |
 | Signing | `ethers` v6 |
 | Store | Upstash Redis / Vercel KV (REST) with in-memory fallback |
-| QR / email | `qrcode.react` · Resend (optional) |
+| QR / email | `qrcode.react` (generate) · `qr-scanner` (camera) · Resend (optional) |
 | Hosting | Vercel (installable PWA) |
 | Package manager | pnpm |
 
@@ -208,6 +209,7 @@ src/
 │   ├── u/[username]/
 │   │   ├── page.tsx             # @handle storefront (server + OG)
 │   │   └── UserPayClient.tsx    # Pay a handle + list the creator's campaigns/products
+│   ├── pay/page.tsx             # Pay anyone: address / ENS / universal QR scan
 │   ├── api/
 │   │   ├── links/route.ts       # POST create · GET list-by-sender (unlockUrl stripped)
 │   │   ├── links/[id]/route.ts  # GET one (unlockUrl stripped)
@@ -229,9 +231,10 @@ src/
 │   ├── chains.ts                # Chain IDs, USDC, settlement target, explorer links
 │   ├── links.ts                 # Link/contribution/handle types + dual-backend store
 │   ├── gsi.ts                   # Google One-Tap helper
+│   ├── ens.ts                   # ENS name → address (Ethereum mainnet RPC)
+│   ├── pay-target.ts            # Parse scanned/typed targets (address/ENS/Beam URL)
 │   └── format.ts                # Display helpers
-├── components/
-│   ├── GoogleGlyph.tsx · Qr.tsx · SettleAnimation.tsx · OnboardingOverlay.tsx
+├── components/                  # GoogleGlyph · Qr · QrScan · SettleAnimation · OnboardingOverlay
 ├── types/particle-ua.d.ts       # Ambient types for the UA SDK
 └── public/icon.svg              # App icon (PWA + favicon)
 ```
