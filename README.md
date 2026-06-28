@@ -69,6 +69,9 @@ Beam started as one-to-one send links and grew into a full chain-abstracted mone
 | 💸 | **Send links** | Creator pays; the recipient claims **walletless** (Google/email). The core wedge — the recipient needs no wallet. |
 | 🙋 | **Request links** | The opener pays the creator. The inverse of send, same one-tap settle on Arbitrum. |
 | 🍕 | **Split / group pay** | One link, **many payers** from different chains. A live **progress bar** fills as each person pays their share; confetti when funded. |
+| 🎯 | **Crowdfunding** | Open, goal-based campaigns — anyone backs any amount toward a target; raised-vs-goal updates live. |
+| 🛒 | **Sell paid programs** | Reusable fixed-price product links — unlimited buyers, each pays the price. **Pay-to-unlock**: buyers reveal the content (course/file/invite) only after paying. |
+| 🏪 | **Creator storefront** | `/u/<name>` lists a creator's campaigns & products in one shareable page. |
 | @ | **Username pay-links** | Claim a permanent `/u/<name>` handle (like a Cash-App `$cashtag`) — a reusable "pay me" link, with QR. |
 | 📱 | **QR codes** | Every link/handle gets a scannable QR — share to a screen, claim on a phone. |
 | 🛰️ | **Cross-chain routing viz** | On every settle, an animation shows funds flowing **source chain(s) → Arbitrum**, derived from the real transaction. |
@@ -152,6 +155,8 @@ Every link carries a **direction**:
 - **send** — the creator funds and approves; the recipient claims walletless (shown below).
 - **request** — the opener pays the creator on a tap.
 - **split** — many openers each pay a share via `/contribute`; the link flips to `paid` once the total fills.
+- **fund** — open crowdfunding: many backers pay any amount toward a goal; stays open (goal is a target, not a cap).
+- **product** — a reusable fixed-price listing: each buyer pays the price, then unlocks the content (`/unlock` is gated to addresses that paid; `unlockUrl` is never returned by public GETs).
 
 For a **send** link, funds move only on the sender's action — the recipient just claims. Status transitions are coordinated through the link store so the two parties' screens stay in sync in real time.
 
