@@ -29,6 +29,7 @@ export default function ClaimClient({ id }: { id: string }) {
   const [error, setError] = useState<string | null>(null);
   const [shareInput, setShareInput] = useState("");
   const [lastSettle, setLastSettle] = useState<SettleResult | null>(null);
+  const [unlocked, setUnlocked] = useState<string | null>(null);
   const announced = useRef(false);
 
   const load = useCallback(async () => {
@@ -37,7 +38,7 @@ export default function ClaimClient({ id }: { id: string }) {
     if (res.ok) setLink(await res.json());
   }, [id]);
 
-  // Poll so status changes (e.g. the sender approving) arrive live.
+  // Poll so status changes (e.g. the sender approving, others chipping in) arrive live.
   useEffect(() => {
     load();
     const t = setInterval(load, 3000);
@@ -55,6 +56,16 @@ export default function ClaimClient({ id }: { id: string }) {
       body: JSON.stringify({ claimantAddress: address, claimantEmail: email }),
     }).then(load);
   }, [isLoggedIn, address, email, link, id, load]);
+
+  // PRODUCT links: if a logged-in buyer already purchased, re-reveal the content.
+  useEffect(() => {
+    if (!isLoggedIn || !address || !link || unlocked) return;
+    if (link.direction !== "product") return;
+    fetch(`/api/links/${id}/unlock?address=${address}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => d?.url && setUnlocked(d.url))
+      .catch(() => {});
+  }, [isLoggedIn, address, link, id, unlocked]);
 
   const run = async (fn: () => Promise<unknown>) => {
     setBusy(true);
@@ -91,7 +102,6 @@ export default function ClaimClient({ id }: { id: string }) {
         });
         await load();
       } catch (e) {
-        // Roll back so the request isn't stuck on "settling".
         await fetch(`/api/links/${id}/claim`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -102,10 +112,10 @@ export default function ClaimClient({ id }: { id: string }) {
       }
     });
 
-  // SPLIT links: the opener pays a share to the creator; many can chip in.
-  const payShare = (amountUsd: string) =>
+  // SPLIT / FUND: the opener contributes an amount to the creator; many can pay.
+  const contribute = (amountUsd: string) =>
     run(async () => {
-      if (!link || !address) return;
+      if (!link || !address || !amountUsd || Number(amountUsd) <= 0) return;
       const res = await sendUsdcToArbitrum(amountUsd, link.senderAddress);
       setLastSettle(res);
       await fetch(`/api/links/${id}/contribute`, {
@@ -114,6 +124,27 @@ export default function ClaimClient({ id }: { id: string }) {
         body: JSON.stringify({ address, email, amountUsd, txId: res.transactionId }),
       });
       setShareInput("");
+      await load();
+    });
+
+  // PRODUCT: the buyer pays the fixed price, then unlocks the content.
+  const buyProduct = () =>
+    run(async () => {
+      if (!link || !address) return;
+      const res = await sendUsdcToArbitrum(link.amountUsd, link.senderAddress);
+      setLastSettle(res);
+      const r = await fetch(`/api/links/${id}/contribute`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          address,
+          email,
+          amountUsd: link.amountUsd,
+          txId: res.transactionId,
+        }),
+      });
+      const data = await r.json().catch(() => null);
+      if (data?.unlocked) setUnlocked(data.unlocked);
       await load();
     });
 
@@ -135,16 +166,65 @@ export default function ClaimClient({ id }: { id: string }) {
 
   const meta = REASON_META[link.reason];
   const from = link.senderName ?? "Someone";
-  const isRequest = link.direction === "request";
-  const isSplit = link.direction === "split";
+  const { direction } = link;
+  const isRequest = direction === "request";
+  const isSplit = direction === "split";
+  const isFund = direction === "fund";
+  const isProduct = direction === "product";
   const total = Number(link.amountUsd);
   const collected = collectedUsd(link);
   const remaining = Math.max(0, total - collected);
   const suggestedShare = link.splitWays
     ? Math.min(remaining || total / link.splitWays, total / link.splitWays)
     : remaining || total;
+  const proofLinks = (
+    <div className="mt-1 flex flex-wrap justify-center gap-2">
+      {lastSettle?.transactionId && (
+        <a
+          className="btn btn-ghost !px-3 !py-2"
+          href={universalxActivity(lastSettle.transactionId)}
+          target="_blank"
+          rel="noreferrer"
+        >
+          Activity
+        </a>
+      )}
+      <a
+        className="btn btn-ghost !px-3 !py-2"
+        href={arbiscanTokenTxns(link.senderAddress)}
+        target="_blank"
+        rel="noreferrer"
+      >
+        View on Arbiscan
+      </a>
+    </div>
+  );
 
-  // ── Settled.
+  // ── Product purchased: show the unlocked content.
+  if (isProduct && unlocked) {
+    return (
+      <main className="beam-shell items-center justify-center text-center">
+        {lastSettle && <Confetti />}
+        <div className="animate-pop text-6xl">🔓</div>
+        <h1 className="animate-pop text-2xl font-black">
+          {link.title || "Unlocked"}
+        </h1>
+        <p className="text-[var(--muted)]">You own this — here&apos;s your access:</p>
+        <a
+          className="btn btn-primary mt-1"
+          href={unlocked}
+          target="_blank"
+          rel="noreferrer"
+        >
+          Open your content ↗
+        </a>
+        {lastSettle && <SettleAnimation sourceChainIds={lastSettle.sourceChainIds} gasless={lastSettle.freeGasFee} />}
+        {proofLinks}
+      </main>
+    );
+  }
+
+  // ── Settled (send / request / split close out here; fund/product stay open).
   if (link.status === "paid") {
     return (
       <main className="beam-shell items-center justify-center text-center">
@@ -170,51 +250,52 @@ export default function ClaimClient({ id }: { id: string }) {
           sourceChainIds={lastSettle?.sourceChainIds ?? []}
           gasless={lastSettle?.freeGasFee}
         />
-        <div className="mt-1 flex flex-wrap justify-center gap-2">
-          {link.txId && (
-            <a
-              className="btn btn-ghost !px-3 !py-2"
-              href={universalxActivity(link.txId)}
-              target="_blank"
-              rel="noreferrer"
-            >
-              Activity
-            </a>
-          )}
-          <a
-            className="btn btn-ghost !px-3 !py-2"
-            href={arbiscanTokenTxns(
-              (isRequest || isSplit ? link.senderAddress : link.claimantAddress) ??
-                link.senderAddress,
-            )}
-            target="_blank"
-            rel="noreferrer"
-          >
-            View on Arbiscan
-          </a>
-        </div>
+        {proofLinks}
       </main>
     );
   }
+
+  const verb = isRequest
+    ? "requesting"
+    : isSplit
+      ? "collecting"
+      : isFund
+        ? "raising"
+        : isProduct
+          ? "selling"
+          : "sending you";
+  const showProgress = isSplit || isFund;
 
   return (
     <main className="beam-shell items-center justify-center">
       <div className="card w-full text-center">
         <div className="text-5xl">{meta.emoji}</div>
         <p className="mt-3 text-sm text-[var(--muted)]">
-          {from} is{" "}
-          {isRequest ? "requesting" : isSplit ? "collecting" : "sending you"}
+          {from} is {verb}
         </p>
-        <p className="my-1 text-5xl font-black tracking-tight">
-          {usd(link.amountUsd)}
-        </p>
-        {link.note ? (
-          <p className="text-[var(--muted)]">&ldquo;{link.note}&rdquo;</p>
+        {link.title && (isFund || isProduct) ? (
+          <>
+            <h1 className="my-1 text-3xl font-black tracking-tight">
+              {link.title}
+            </h1>
+            <p className="text-lg font-semibold text-[var(--muted)]">
+              {usd(link.amountUsd)}
+              {isFund ? " goal" : ""}
+              {isProduct ? " each" : ""}
+            </p>
+          </>
         ) : (
-          <p className="text-[var(--muted)]">{meta.label}</p>
+          <p className="my-1 text-5xl font-black tracking-tight">
+            {usd(link.amountUsd)}
+          </p>
         )}
+        {link.note ? (
+          <p className="mt-1 text-[var(--muted)]">&ldquo;{link.note}&rdquo;</p>
+        ) : !link.title ? (
+          <p className="text-[var(--muted)]">{meta.label}</p>
+        ) : null}
 
-        {isSplit && (
+        {showProgress && (
           <div className="mt-4">
             <div className="h-2 w-full overflow-hidden rounded-full bg-[var(--surface-2)]">
               <div
@@ -225,8 +306,8 @@ export default function ClaimClient({ id }: { id: string }) {
               />
             </div>
             <p className="mt-1 text-xs text-[var(--muted)]">
-              {usd(collected)} of {usd(total)} ·{" "}
-              {link.contributions?.length ?? 0} paid
+              {usd(collected)} {isFund ? "raised of" : "of"} {usd(total)}
+              {isFund ? " goal" : ""} · {link.contributions?.length ?? 0} paid
             </p>
           </div>
         )}
@@ -237,19 +318,38 @@ export default function ClaimClient({ id }: { id: string }) {
               busy={busy}
               disabled={!magic}
               googleEnabled={googleEnabled}
-              cta={isRequest || isSplit ? "Pay" : "Claim"}
+              cta={isProduct ? "Buy" : isRequest || isSplit || isFund ? "Pay" : "Claim"}
               onSignIn={signIn}
               onGoogle={signInGoogle}
             />
-          ) : isSplit ? (
-            // Opener pays their share toward the split.
+          ) : isProduct ? (
             <div className="flex flex-col gap-2">
+              <button className="btn btn-primary" disabled={busy} onClick={buyProduct}>
+                {busy ? "Settling on Arbitrum…" : `Buy for ${usd(link.amountUsd)}`}
+              </button>
+              <p className="text-xs text-[var(--muted)]">
+                Your balance: {usd(totalUsd)} · unlocks instantly after payment
+              </p>
+            </div>
+          ) : isSplit || isFund ? (
+            <div className="flex flex-col gap-2">
+              {lastSettle ? (
+                <div className="animate-pop rounded-xl border border-[var(--success)] p-2 text-sm text-[var(--success)]">
+                  Thanks — your {usd(shareInput || suggestedShare)} settled on Arbitrum 🎉
+                </div>
+              ) : null}
               <div className="flex items-center gap-2">
                 <span className="text-xl font-bold text-[var(--muted)]">$</span>
                 <input
                   className="input text-xl font-bold"
                   inputMode="decimal"
-                  placeholder={suggestedShare.toFixed(2)}
+                  placeholder={
+                    isFund
+                      ? remaining > 0
+                        ? remaining.toFixed(2)
+                        : "amount"
+                      : suggestedShare.toFixed(2)
+                  }
                   value={shareInput}
                   onChange={(e) =>
                     setShareInput(e.target.value.replace(/[^0-9.]/g, ""))
@@ -260,19 +360,20 @@ export default function ClaimClient({ id }: { id: string }) {
                 className="btn btn-primary"
                 disabled={busy}
                 onClick={() =>
-                  payShare(shareInput || suggestedShare.toFixed(2))
+                  contribute(shareInput || (isFund ? "" : suggestedShare.toFixed(2)))
                 }
               >
                 {busy
                   ? "Settling on Arbitrum…"
-                  : `Pay ${usd(shareInput || suggestedShare)}`}
+                  : isFund
+                    ? `Back ${shareInput ? usd(shareInput) : "this"}`
+                    : `Pay ${usd(shareInput || suggestedShare)}`}
               </button>
               <p className="text-xs text-[var(--muted)]">
                 Your balance: {usd(totalUsd)} · settles to {from} on Arbitrum
               </p>
             </div>
           ) : isRequest ? (
-            // Opener pays the request.
             <div className="flex flex-col gap-2">
               <button
                 className="btn btn-primary"
@@ -288,7 +389,6 @@ export default function ClaimClient({ id }: { id: string }) {
               </p>
             </div>
           ) : (
-            // Recipient waits for the sender to approve a SEND link.
             <div className="flex flex-col items-center gap-2">
               <div className="h-6 w-6 animate-spin rounded-full border-2 border-[var(--accent)] border-t-transparent" />
               <p className="text-sm text-[var(--muted)]">

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getLink } from "@/lib/links";
+import { getLink, publicLink } from "@/lib/links";
 
 export async function GET(
   _req: Request,
@@ -8,5 +8,5 @@ export async function GET(
   const { id } = await params;
   const link = await getLink(id);
   if (!link) return NextResponse.json({ error: "not found" }, { status: 404 });
-  return NextResponse.json(link);
+  return NextResponse.json(publicLink(link));
 }

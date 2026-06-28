@@ -1,5 +1,12 @@
 import type { Metadata } from "next";
-import { usernameToAddress, normUsername } from "@/lib/links";
+import {
+  usernameToAddress,
+  normUsername,
+  listLinksBySender,
+  publicLink,
+  isCampaign,
+  type BeamLink,
+} from "@/lib/links";
 import UserPayClient from "./UserPayClient";
 
 export async function generateMetadata({
@@ -27,5 +34,14 @@ export default async function UserPage({
   const { username } = await params;
   const name = normUsername(username);
   const address = await usernameToAddress(name).catch(() => null);
-  return <UserPayClient username={name} recipient={address} />;
+  let campaigns: BeamLink[] = [];
+  if (address) {
+    const links = await listLinksBySender(address).catch(() => []);
+    campaigns = links
+      .filter((l) => isCampaign(l.direction))
+      .map(publicLink);
+  }
+  return (
+    <UserPayClient username={name} recipient={address} campaigns={campaigns} />
+  );
 }

@@ -20,7 +20,11 @@ export async function generateMetadata({
       ? `${who} is requesting ${amount} ${emoji}`
       : link.direction === "split"
         ? `${who} is splitting ${amount} ${emoji} — chip in`
-        : `${who} sent you ${amount} ${emoji}`;
+        : link.direction === "fund"
+          ? `Back "${link.title ?? "this"}" — ${amount} goal ${emoji}`
+          : link.direction === "product"
+            ? `Buy "${link.title ?? "this"}" — ${amount} ${emoji}`
+            : `${who} sent you ${amount} ${emoji}`;
   const description = link.note
     ? `"${link.note}" — settle it with a tap on Beam. No wallet needed.`
     : "Settle it with a tap on Beam. No wallet, no seed phrase.";

@@ -20,8 +20,14 @@ export type LinkStatus = "pending" | "claiming" | "sending" | "paid";
  * "send"    = creator pays the opener (walletless claim).
  * "request" = the opener pays the creator.
  * "split"   = many openers each pay a share to the creator until the total fills.
+ * "fund"    = crowdfund: many backers pay any amount toward a goal (stays open).
+ * "product" = sell: many buyers each pay a fixed price; pays unlock content.
  */
-export type Direction = "send" | "request" | "split";
+export type Direction = "send" | "request" | "split" | "fund" | "product";
+
+/** Directions where many people pay one creator (reuse the contributions engine). */
+export const isCampaign = (d: Direction) =>
+  d === "split" || d === "fund" || d === "product";
 
 /** One payment toward a split link. */
 export type Contribution = {
@@ -35,10 +41,15 @@ export type Contribution = {
 export type BeamLink = {
   id: string;
   direction: Direction;
+  /** amount (send/request) · goal (fund) · unit price (product) · total (split). */
   amountUsd: string;
   reason: Reason;
   note?: string;
-  /** The link's creator. For "send" they pay; for "request"/"split" they receive. */
+  /** Campaign/product display name (fund/product). */
+  title?: string;
+  /** Product only: secret content revealed to a buyer after they pay. */
+  unlockUrl?: string;
+  /** The link's creator. For "send" they pay; otherwise they receive. */
   senderAddress: string;
   senderName?: string;
   status: LinkStatus;
@@ -48,15 +59,28 @@ export type BeamLink = {
   txId?: string;
   /** Split only: suggested number of payers (share = amountUsd / splitWays). */
   splitWays?: number;
-  /** Split only: payments collected so far. */
+  /** Campaign payments collected so far (split/fund/product). */
   contributions?: Contribution[];
   createdAt: number;
   paidAt?: number;
 };
 
-/** Total collected for a split link. */
+/** Total collected across all contributions. */
 export const collectedUsd = (link: BeamLink): number =>
   (link.contributions ?? []).reduce((s, c) => s + Number(c.amountUsd), 0);
+
+/** Has this address already paid toward a link (case-insensitive). */
+export const hasContributed = (link: BeamLink, address: string): boolean =>
+  (link.contributions ?? []).some(
+    (c) => c.address.toLowerCase() === address.toLowerCase(),
+  );
+
+/** Public view of a link — never leaks the product's unlock content. */
+export const publicLink = (link: BeamLink): BeamLink => {
+  const { unlockUrl: _unlock, ...rest } = link;
+  void _unlock;
+  return rest;
+};
 
 export const REASON_META: Record<Reason, { label: string; emoji: string }> = {
   rent: { label: "Rent", emoji: "🏠" },
@@ -72,12 +96,20 @@ export type CreateInput = Pick<
   | "amountUsd"
   | "reason"
   | "note"
+  | "title"
+  | "unlockUrl"
   | "senderAddress"
   | "senderName"
   | "splitWays"
 >;
 
-const DIRECTIONS: Direction[] = ["send", "request", "split"];
+const DIRECTIONS: Direction[] = [
+  "send",
+  "request",
+  "split",
+  "fund",
+  "product",
+];
 const normalizeDirection = (d: unknown): Direction =>
   DIRECTIONS.includes(d as Direction) ? (d as Direction) : "send";
 
@@ -113,21 +145,28 @@ function buildLink(input: CreateInput): BeamLink {
     amountUsd: input.amountUsd,
     reason: input.reason,
     note: input.note,
+    ...(direction === "fund" || direction === "product"
+      ? { title: input.title, unlockUrl: input.unlockUrl }
+      : {}),
     senderAddress: input.senderAddress,
     senderName: input.senderName,
     status: "pending",
-    ...(direction === "split"
-      ? { splitWays: input.splitWays, contributions: [] }
+    ...(isCampaign(direction)
+      ? { splitWays: direction === "split" ? input.splitWays : undefined, contributions: [] }
       : {}),
     createdAt: Date.now(),
   };
 }
 
-/** Append a contribution to a split link and mark it paid once the total fills. */
+/**
+ * Append a contribution. A "split" closes (paid) once the total fills; "fund"
+ * and "product" stay open indefinitely (goal/price are targets, not caps).
+ */
 function applyContribution(link: BeamLink, c: Contribution): BeamLink {
   const contributions = [...(link.contributions ?? []), c];
   const collected = contributions.reduce((s, x) => s + Number(x.amountUsd), 0);
-  const filled = collected + 1e-9 >= Number(link.amountUsd);
+  const filled =
+    link.direction === "split" && collected + 1e-9 >= Number(link.amountUsd);
   return {
     ...link,
     contributions,

@@ -7,6 +7,7 @@ import {
   useUniversalAccount,
   type SettleResult,
 } from "@/providers/UniversalAccountProvider";
+import { collectedUsd, REASON_META, type BeamLink } from "@/lib/links";
 import { usd } from "@/lib/format";
 import { arbiscanTokenTxns, universalxActivity } from "@/lib/chains";
 import { GoogleGlyph } from "@/components/GoogleGlyph";
@@ -15,9 +16,11 @@ import { SettleAnimation } from "@/components/SettleAnimation";
 export default function UserPayClient({
   username,
   recipient,
+  campaigns = [],
 }: {
   username: string;
   recipient: string | null;
+  campaigns?: BeamLink[];
 }) {
   const {
     magic,
@@ -146,10 +149,61 @@ export default function UserPayClient({
         </div>
         {error && <p className="mt-3 text-xs text-[var(--danger)]">{error}</p>}
       </div>
+
+      {campaigns.length > 0 && (
+        <section className="mt-5 flex w-full flex-col gap-2">
+          <p className="px-1 text-sm text-[var(--muted)]">
+            From @{username}
+          </p>
+          {campaigns.map((c) => (
+            <StoreCard key={c.id} link={c} />
+          ))}
+        </section>
+      )}
+
       <p className="mt-4 text-center text-xs text-[var(--muted)]">
         No wallet needed. Powered by Particle Universal Accounts + Magic.
       </p>
     </main>
+  );
+}
+
+/** A campaign/product card in a creator's storefront. */
+function StoreCard({ link }: { link: BeamLink }) {
+  const target = Number(link.amountUsd);
+  const collected = collectedUsd(link);
+  const isProduct = link.direction === "product";
+  const isFund = link.direction === "fund";
+  const pct = Math.min(100, target > 0 ? (collected / target) * 100 : 0);
+  return (
+    <Link
+      href={`/claim/${link.id}`}
+      className="card flex flex-col gap-2 !p-4 transition-transform active:scale-[0.99]"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <p className="min-w-0 truncate font-semibold">
+          {link.title || `${REASON_META[link.reason].emoji} ${usd(target)}`}
+        </p>
+        <span className="shrink-0 rounded-full bg-[var(--accent)] px-3 py-1 text-xs font-semibold text-white">
+          {isProduct ? `Buy ${usd(target)}` : isFund ? "Back" : "Pay"}
+        </span>
+      </div>
+      {!isProduct && (
+        <div className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--surface-2)]">
+          <div
+            className="h-full rounded-full bg-[var(--success)]"
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+      )}
+      <p className="text-xs text-[var(--muted)]">
+        {isProduct
+          ? `${link.contributions?.length ?? 0} sold`
+          : isFund
+            ? `${usd(collected)} raised of ${usd(target)}`
+            : `${usd(collected)} of ${usd(target)}`}
+      </p>
+    </Link>
   );
 }
 

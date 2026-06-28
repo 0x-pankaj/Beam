@@ -8,6 +8,7 @@ import {
 } from "@/providers/UniversalAccountProvider";
 import {
   collectedUsd,
+  isCampaign,
   REASON_META,
   type BeamLink,
   type Direction,
@@ -358,7 +359,17 @@ function HandleCard({ address }: { address: string }) {
   );
 }
 
-/* ───────────────────────────── Link form (send / request) ───────────────── */
+/* ───────────────────── Link form (pay people / create campaign) ─────────── */
+
+const PAY_MODES: Direction[] = ["send", "request", "split"];
+const CREATE_MODES: Direction[] = ["fund", "product"];
+const MODE_LABEL: Record<Direction, string> = {
+  send: "Send",
+  request: "Request",
+  split: "Split",
+  fund: "Fundraise",
+  product: "Sell",
+};
 
 function LinkForm({
   address,
@@ -369,15 +380,27 @@ function LinkForm({
   senderName?: string;
   onCreated: () => void;
 }) {
+  const [tier, setTier] = useState<"pay" | "create">("pay");
   const [mode, setMode] = useState<Direction>("send");
   const [amount, setAmount] = useState("");
   const [ways, setWays] = useState("");
+  const [title, setTitle] = useState("");
+  const [unlockUrl, setUnlockUrl] = useState("");
   const [reason, setReason] = useState<Reason>("none");
   const [note, setNote] = useState("");
   const [recipientEmail, setRecipientEmail] = useState("");
   const [busy, setBusy] = useState(false);
   const [created, setCreated] = useState<BeamLink | null>(null);
   const [copied, setCopied] = useState(false);
+
+  const isCreate = tier === "create";
+  const isProduct = mode === "product";
+  const isFund = mode === "fund";
+
+  const switchTier = (t: "pay" | "create") => {
+    setTier(t);
+    setMode(t === "pay" ? "send" : "fund");
+  };
 
   const create = async () => {
     setBusy(true);
@@ -390,6 +413,8 @@ function LinkForm({
           amountUsd: amount,
           reason,
           note: note || undefined,
+          title: isCreate ? title || undefined : undefined,
+          unlockUrl: isProduct ? unlockUrl || undefined : undefined,
           senderAddress: address,
           senderName,
           splitWays: mode === "split" ? Number(ways) || undefined : undefined,
@@ -399,7 +424,6 @@ function LinkForm({
         const link: BeamLink = await res.json();
         setCreated(link);
         onCreated();
-        // Optionally email the link to the recipient (no-ops without Resend).
         if (recipientEmail) {
           fetch("/api/notify", {
             method: "POST",
@@ -423,6 +447,8 @@ function LinkForm({
     setCreated(null);
     setAmount("");
     setWays("");
+    setTitle("");
+    setUnlockUrl("");
     setReason("none");
     setNote("");
     setRecipientEmail("");
@@ -437,7 +463,11 @@ function LinkForm({
         ? `Can you send me ${usd(created.amountUsd)}?`
         : created.direction === "split"
           ? `Chip in for ${usd(created.amountUsd)} on Beam`
-          : `${usd(created.amountUsd)} for you`;
+          : created.direction === "fund"
+            ? `Back "${created.title}" on Beam`
+            : created.direction === "product"
+              ? `Get "${created.title}" for ${usd(created.amountUsd)} on Beam`
+              : `${usd(created.amountUsd)} for you`;
     try {
       if (navigator.share) {
         await navigator.share({ title: "Beam", text, url });
@@ -451,37 +481,33 @@ function LinkForm({
   };
 
   if (created) {
-    const isReq = created.direction === "request";
-    const isSplit = created.direction === "split";
+    const d = created.direction;
+    const headline =
+      d === "split"
+        ? "Split ready — share it with the group"
+        : d === "fund"
+          ? "Campaign live — share it everywhere"
+          : d === "product"
+            ? "Product live — share it to sell"
+            : d === "request"
+              ? "Request ready — share it"
+              : "Link ready — share it";
     return (
       <div className="card animate-pop flex flex-col gap-3">
-        <p className="text-sm text-[var(--muted)]">
-          {isSplit
-            ? "Split ready — share it with the group"
-            : isReq
-              ? "Request ready — share it"
-              : "Link ready — share it"}
-        </p>
+        <p className="text-sm text-[var(--muted)]">{headline}</p>
         <p className="text-2xl font-bold">
-          {REASON_META[created.reason].emoji} {usd(created.amountUsd)}
-          {isSplit && created.splitWays ? (
-            <span className="ml-2 text-sm font-normal text-[var(--muted)]">
-              {usd(Number(created.amountUsd) / created.splitWays)} each ·{" "}
-              {created.splitWays} ways
-            </span>
+          {created.title ? `${created.title} · ` : REASON_META[created.reason].emoji + " "}
+          {usd(created.amountUsd)}
+          {d === "product" ? (
+            <span className="ml-1 text-sm font-normal text-[var(--muted)]">each</span>
+          ) : d === "fund" ? (
+            <span className="ml-1 text-sm font-normal text-[var(--muted)]">goal</span>
           ) : null}
         </p>
         <Qr url={claimUrl(created.id)} />
         <div className="truncate rounded-xl bg-[var(--surface-2)] px-3 py-2 text-xs text-[var(--accent-2)]">
           {claimUrl(created.id)}
         </div>
-        <p className="text-xs text-[var(--muted)]">
-          {isSplit
-            ? "Everyone who opens it pays their share — it fills up live."
-            : isReq
-              ? "Send this to whoever owes you — they pay with a tap."
-              : "Send this to whoever you're paying — they claim with a tap."}
-        </p>
         <div className="flex gap-2">
           <button className="btn btn-primary flex-1" onClick={share}>
             {copied ? "Copied ✓" : "Share link"}
@@ -494,31 +520,75 @@ function LinkForm({
     );
   }
 
+  const amountLabel = isFund ? "Goal" : isProduct ? "Price" : null;
+  const subtitle = isFund
+    ? "Crowdfund — anyone can chip in toward your goal"
+    : isProduct
+      ? "Sell a program — buyers pay, then unlock the content"
+      : mode === "request"
+        ? "Request money — they pay with a tap"
+        : mode === "split"
+          ? "Split a bill — everyone pays their share"
+          : "Send money — they claim it with a tap";
+
   return (
     <div className="card flex flex-col gap-3">
-      {/* Send / Request / Split toggle */}
-      <div className="grid grid-cols-3 gap-1 rounded-2xl bg-[var(--surface-2)] p-1">
-        {(["send", "request", "split"] as Direction[]).map((m) => (
+      {/* Tier 1: Pay people / Create a campaign */}
+      <div className="grid grid-cols-2 gap-1 rounded-2xl bg-[var(--surface-2)] p-1">
+        {(
+          [
+            ["pay", "Pay people"],
+            ["create", "Create a campaign"],
+          ] as const
+        ).map(([t, label]) => (
+          <button
+            key={t}
+            onClick={() => switchTier(t)}
+            className="rounded-xl py-2 text-xs font-semibold transition-colors"
+            style={{
+              background: tier === t ? "var(--accent)" : "transparent",
+              color: tier === t ? "white" : "var(--muted)",
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Tier 2: mode within the chosen tier */}
+      <div
+        className="grid gap-1 rounded-2xl bg-[var(--surface-2)] p-1"
+        style={{
+          gridTemplateColumns: `repeat(${(isCreate ? CREATE_MODES : PAY_MODES).length}, 1fr)`,
+        }}
+      >
+        {(isCreate ? CREATE_MODES : PAY_MODES).map((m) => (
           <button
             key={m}
             onClick={() => setMode(m)}
-            className="rounded-xl py-2 text-sm font-semibold capitalize transition-colors"
+            className="rounded-xl py-2 text-sm font-semibold transition-colors"
             style={{
               background: mode === m ? "var(--accent)" : "transparent",
               color: mode === m ? "white" : "var(--muted)",
             }}
           >
-            {m}
+            {MODE_LABEL[m]}
           </button>
         ))}
       </div>
-      <p className="text-sm text-[var(--muted)]">
-        {mode === "request"
-          ? "Request money — they pay with a tap"
-          : mode === "split"
-            ? "Split a bill — everyone pays their share"
-            : "Send money — they claim it with a tap"}
-      </p>
+
+      <p className="text-sm text-[var(--muted)]">{subtitle}</p>
+
+      {isCreate && (
+        <input
+          className="input"
+          placeholder={isProduct ? "Product name" : "Campaign title"}
+          value={title}
+          maxLength={80}
+          onChange={(e) => setTitle(e.target.value)}
+        />
+      )}
+
       <div className="flex items-center gap-2">
         <span className="text-3xl font-bold text-[var(--muted)]">$</span>
         <input
@@ -528,7 +598,11 @@ function LinkForm({
           value={amount}
           onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))}
         />
+        {amountLabel && (
+          <span className="shrink-0 text-sm text-[var(--muted)]">{amountLabel}</span>
+        )}
       </div>
+
       {mode === "split" && (
         <div className="flex items-center gap-2">
           <input
@@ -545,26 +619,41 @@ function LinkForm({
           )}
         </div>
       )}
-      <div className="flex flex-wrap gap-2">
-        {PRESETS.map((r) => (
-          <button
-            key={r}
-            className="chip"
-            data-active={reason === r}
-            onClick={() => setReason(reason === r ? "none" : r)}
-          >
-            {REASON_META[r].emoji} {REASON_META[r].label}
-          </button>
-        ))}
-      </div>
+
+      {isProduct && (
+        <input
+          className="input"
+          placeholder="Unlock link revealed after purchase (course, file, invite…)"
+          value={unlockUrl}
+          maxLength={500}
+          onChange={(e) => setUnlockUrl(e.target.value)}
+        />
+      )}
+
+      {!isProduct && (
+        <div className="flex flex-wrap gap-2">
+          {PRESETS.map((r) => (
+            <button
+              key={r}
+              className="chip"
+              data-active={reason === r}
+              onClick={() => setReason(reason === r ? "none" : r)}
+            >
+              {REASON_META[r].emoji} {REASON_META[r].label}
+            </button>
+          ))}
+        </div>
+      )}
+
       <input
         className="input"
-        placeholder="What's it for? (optional)"
+        placeholder={isCreate ? "Description (optional)" : "What's it for? (optional)"}
         value={note}
         maxLength={140}
         onChange={(e) => setNote(e.target.value)}
       />
-      {mode !== "split" && (
+
+      {(mode === "send" || mode === "request") && (
         <input
           className="input"
           type="email"
@@ -574,9 +663,15 @@ function LinkForm({
           onChange={(e) => setRecipientEmail(e.target.value)}
         />
       )}
+
       <button
         className="btn btn-primary"
-        disabled={!amount || Number(amount) <= 0 || busy}
+        disabled={
+          !amount ||
+          Number(amount) <= 0 ||
+          busy ||
+          (isCreate && !title)
+        }
         onClick={create}
       >
         {busy
@@ -585,7 +680,11 @@ function LinkForm({
             ? "Create request link"
             : mode === "split"
               ? "Create split link"
-              : "Create payment link"}
+              : isFund
+                ? "Launch campaign"
+                : isProduct
+                  ? "List product"
+                  : "Create payment link"}
       </button>
     </div>
   );
@@ -607,8 +706,8 @@ function Activity({
     <section className="flex flex-col gap-2">
       <p className="px-1 text-sm text-[var(--muted)]">Activity</p>
       {links.map((l) =>
-        l.direction === "split" ? (
-          <SplitRow key={l.id} link={l} />
+        isCampaign(l.direction) ? (
+          <CampaignRow key={l.id} link={l} />
         ) : (
           <div
             key={l.id}
@@ -659,37 +758,46 @@ function Activity({
   );
 }
 
-/** Activity row for a split link — live progress bar + contributor count. */
-function SplitRow({ link }: { link: BeamLink }) {
-  const total = Number(link.amountUsd);
+/** Activity row for a campaign (split / fund / product) — progress + counts. */
+function CampaignRow({ link }: { link: BeamLink }) {
+  const target = Number(link.amountUsd);
   const collected = collectedUsd(link);
-  const pct = Math.min(100, total > 0 ? (collected / total) * 100 : 0);
   const n = link.contributions?.length ?? 0;
+  const isProduct = link.direction === "product";
+  const isFund = link.direction === "fund";
+  const pct = Math.min(100, target > 0 ? (collected / target) * 100 : 0);
+  const heading = link.title || `${REASON_META[link.reason].emoji} ${usd(target)}`;
+  const tag = link.direction;
+
   return (
     <div className="card flex flex-col gap-2 !p-4">
-      <div className="flex items-center justify-between">
-        <p className="font-semibold">
-          {REASON_META[link.reason].emoji} {usd(link.amountUsd)}
-          <span className="ml-2 text-xs font-normal text-[var(--muted)]">
-            split
-          </span>
+      <div className="flex items-center justify-between gap-2">
+        <p className="min-w-0 truncate font-semibold">
+          {heading}
+          <span className="ml-2 text-xs font-normal text-[var(--muted)]">{tag}</span>
         </p>
         {link.status === "paid" ? (
           <Badge tone="success">Funded</Badge>
         ) : (
           <Badge>
-            {n} {n === 1 ? "payer" : "payers"}
+            {n} {isProduct ? (n === 1 ? "sale" : "sales") : n === 1 ? "payer" : "payers"}
           </Badge>
         )}
       </div>
-      <div className="h-2 w-full overflow-hidden rounded-full bg-[var(--surface-2)]">
-        <div
-          className="h-full rounded-full bg-[var(--success)] transition-all"
-          style={{ width: `${pct}%` }}
-        />
-      </div>
+      {!isProduct && (
+        <div className="h-2 w-full overflow-hidden rounded-full bg-[var(--surface-2)]">
+          <div
+            className="h-full rounded-full bg-[var(--success)] transition-all"
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+      )}
       <p className="text-xs text-[var(--muted)]">
-        {usd(collected)} of {usd(total)} collected
+        {isProduct
+          ? `${usd(target)} each · ${usd(collected)} earned`
+          : isFund
+            ? `${usd(collected)} raised of ${usd(target)} goal`
+            : `${usd(collected)} of ${usd(target)} collected`}
         {link.status === "paid" ? " · settled on Arbitrum ✓" : ""}
       </p>
     </div>
