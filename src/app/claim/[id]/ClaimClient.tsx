@@ -2,11 +2,15 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useMagic } from "@/providers/MagicProvider";
-import { useUniversalAccount } from "@/providers/UniversalAccountProvider";
+import {
+  useUniversalAccount,
+  type SettleResult,
+} from "@/providers/UniversalAccountProvider";
 import { collectedUsd, REASON_META, type BeamLink } from "@/lib/links";
 import { usd } from "@/lib/format";
-import { universalxActivity } from "@/lib/chains";
+import { arbiscanTokenTxns, universalxActivity } from "@/lib/chains";
 import { GoogleGlyph } from "@/components/GoogleGlyph";
+import { SettleAnimation } from "@/components/SettleAnimation";
 
 export default function ClaimClient({ id }: { id: string }) {
   const {
@@ -24,6 +28,7 @@ export default function ClaimClient({ id }: { id: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [shareInput, setShareInput] = useState("");
+  const [lastSettle, setLastSettle] = useState<SettleResult | null>(null);
   const announced = useRef(false);
 
   const load = useCallback(async () => {
@@ -78,6 +83,7 @@ export default function ClaimClient({ id }: { id: string }) {
       await load();
       try {
         const res = await sendUsdcToArbitrum(link.amountUsd, link.senderAddress);
+        setLastSettle(res);
         await fetch(`/api/links/${id}/paid`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -101,6 +107,7 @@ export default function ClaimClient({ id }: { id: string }) {
     run(async () => {
       if (!link || !address) return;
       const res = await sendUsdcToArbitrum(amountUsd, link.senderAddress);
+      setLastSettle(res);
       await fetch(`/api/links/${id}/contribute`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -159,16 +166,33 @@ export default function ClaimClient({ id }: { id: string }) {
               ? `${usd(total)} collected from ${link.contributions?.length ?? 0} people — settled to ${from} on Arbitrum.`
               : "Settled on Arbitrum — it's yours."}
         </p>
-        {link.txId && (
+        <SettleAnimation
+          sourceChainIds={lastSettle?.sourceChainIds ?? []}
+          gasless={lastSettle?.freeGasFee}
+        />
+        <div className="mt-1 flex flex-wrap justify-center gap-2">
+          {link.txId && (
+            <a
+              className="btn btn-ghost !px-3 !py-2"
+              href={universalxActivity(link.txId)}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Activity
+            </a>
+          )}
           <a
-            className="btn btn-ghost mt-2"
-            href={universalxActivity(link.txId)}
+            className="btn btn-ghost !px-3 !py-2"
+            href={arbiscanTokenTxns(
+              (isRequest || isSplit ? link.senderAddress : link.claimantAddress) ??
+                link.senderAddress,
+            )}
             target="_blank"
             rel="noreferrer"
           >
-            View settlement
+            View on Arbiscan
           </a>
-        )}
+        </div>
       </main>
     );
   }

@@ -84,6 +84,8 @@ declare module "@particle-network/universal-account-sdk" {
     rootHash: string;
     userOps: IUserOpWithChain[];
     transactionId: string;
+    transactionFees?: { freeGasFee?: boolean };
+    depositTokens?: { token: { chainId: number; symbol?: string } }[];
   }
 
   export interface ISmartAccountOptions {

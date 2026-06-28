@@ -48,6 +48,14 @@ type Magic7702 = {
 /** Shape of one entry from getEIP7702Deployments() (SDK types it as any). */
 type Deployment = { chainId: number; isDelegated?: boolean };
 
+/** What a settle returns — enough to visualize the cross-chain routing. */
+export type SettleResult = {
+  transactionId: string;
+  freeGasFee: boolean;
+  /** Chains the funds were sourced from (for the routing animation). */
+  sourceChainIds: number[];
+};
+
 type UAContextType = {
   universalAccount: UniversalAccount | null;
   primaryAssets: IAssetsResponse | null;
@@ -57,10 +65,7 @@ type UAContextType = {
   refreshBalance: () => Promise<void>;
   ensureDelegated: () => Promise<void>;
   /** Move `amount` USDC cross-chain so it settles on Arbitrum to `receiver`. */
-  sendUsdcToArbitrum: (
-    amount: string,
-    receiver: string,
-  ) => Promise<{ transactionId: string }>;
+  sendUsdcToArbitrum: (amount: string, receiver: string) => Promise<SettleResult>;
 };
 
 const UAContext = createContext<UAContextType>({
@@ -71,7 +76,11 @@ const UAContext = createContext<UAContextType>({
   loading: false,
   refreshBalance: async () => {},
   ensureDelegated: async () => {},
-  sendUsdcToArbitrum: async () => ({ transactionId: "" }),
+  sendUsdcToArbitrum: async () => ({
+    transactionId: "",
+    freeGasFee: false,
+    sourceChainIds: [],
+  }),
 });
 
 export const useUniversalAccount = () => useContext(UAContext);
@@ -231,7 +240,20 @@ export const UniversalAccountProvider = ({
         authorizations.length ? authorizations : undefined,
       );
       await refreshBalance();
-      return result as { transactionId: string };
+
+      // Where the funds came from, for the routing visualization.
+      const sourceChainIds = Array.from(
+        new Set(
+          (transaction.depositTokens ?? [])
+            .map((d) => d.token.chainId)
+            .filter((c) => c !== SETTLEMENT_CHAIN_ID),
+        ),
+      );
+      return {
+        transactionId: (result as { transactionId: string }).transactionId,
+        freeGasFee: transaction.transactionFees?.freeGasFee ?? false,
+        sourceChainIds,
+      };
     },
     [universalAccount, magic, address, signEip7702Auth, refreshBalance],
   );

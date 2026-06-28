@@ -2,7 +2,10 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useMagic } from "@/providers/MagicProvider";
-import { useUniversalAccount } from "@/providers/UniversalAccountProvider";
+import {
+  useUniversalAccount,
+  type SettleResult,
+} from "@/providers/UniversalAccountProvider";
 import {
   collectedUsd,
   REASON_META,
@@ -14,6 +17,7 @@ import { claimUrl, short, usd } from "@/lib/format";
 import { chainName } from "@/lib/chains";
 import { GoogleGlyph } from "@/components/GoogleGlyph";
 import { Qr } from "@/components/Qr";
+import { SettleAnimation } from "@/components/SettleAnimation";
 
 const PRESETS: Reason[] = ["rent", "split", "gift", "tip"];
 
@@ -134,6 +138,7 @@ function Dashboard() {
   const [links, setLinks] = useState<BeamLink[]>([]);
   const [payingId, setPayingId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [settle, setSettle] = useState<SettleResult | null>(null);
   const [copiedAddr, setCopiedAddr] = useState(false);
 
   const copyAddress = () => {
@@ -160,6 +165,7 @@ function Dashboard() {
     if (!link.claimantAddress) return;
     setPayingId(link.id);
     setToast(null);
+    setSettle(null);
     try {
       // Flip the recipient's view to "settling" the moment we start.
       await fetch(`/api/links/${link.id}/sending`, { method: "POST" });
@@ -171,6 +177,7 @@ function Dashboard() {
         body: JSON.stringify({ txId: res.transactionId }),
       });
       setToast(`Sent ${usd(link.amountUsd)} — settled on Arbitrum 🎉`);
+      setSettle(res);
       await Promise.all([loadLinks(), refreshBalance()]);
     } catch (e) {
       setToast(e instanceof Error ? e.message : String(e));
@@ -245,6 +252,12 @@ function Dashboard() {
       {toast && (
         <div className="card animate-pop border-[var(--success)] text-center text-sm text-[var(--success)]">
           {toast}
+          {settle && (
+            <SettleAnimation
+              sourceChainIds={settle.sourceChainIds}
+              gasless={settle.freeGasFee}
+            />
+          )}
         </div>
       )}
 

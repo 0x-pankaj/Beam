@@ -47,5 +47,10 @@ export const CHAIN_NAMES: Record<number, string> = {
 export const chainName = (id: number) => CHAIN_NAMES[id] ?? `Chain ${id}`;
 
 export const arbiscanTx = (hash: string) => `https://arbiscan.io/tx/${hash}`;
+
+/** Recipient's USDC transfers on Arbitrum — on-chain proof the money landed. */
+export const arbiscanTokenTxns = (address: string) =>
+  `https://arbiscan.io/token/${SETTLEMENT_USDC}?a=${address}`;
+
 export const universalxActivity = (id: string) =>
   `https://universalx.app/activity/details?id=${id}`;
