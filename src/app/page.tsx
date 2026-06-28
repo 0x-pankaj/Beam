@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { useMagic } from "@/providers/MagicProvider";
 import {
   useUniversalAccount,
@@ -245,6 +246,10 @@ function Dashboard() {
           </button>
         )}
       </section>
+
+      <Link href="/pay" className="btn btn-ghost">
+        ⛶ Pay anyone — scan or paste an address
+      </Link>
 
       <LinkForm
         address={address!}
