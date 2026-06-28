@@ -1400,7 +1400,7 @@ function ActivityRow({
   payingId: string | null;
   onPay: (link: BeamLink) => void;
 }) {
-  const ic = ACT_ICON[l.direction];
+  const ic = ACT_ICON[l.direction] ?? ACT_ICON.send;
   const sub =
     l.status === "pending"
       ? l.direction === "request"
@@ -1503,8 +1503,9 @@ function CampaignRow({ link }: { link: BeamLink }) {
   const isProduct = link.direction === "product";
   const isFund = link.direction === "fund";
   const pct = Math.min(100, target > 0 ? (collected / target) * 100 : 0);
-  const heading = link.title || `${REASON_META[link.reason].emoji} ${usd(target)}`;
-  const ic = ACT_ICON[link.direction];
+  const heading =
+    link.title || `${(REASON_META[link.reason] ?? REASON_META.none).emoji} ${usd(target)}`;
+  const ic = ACT_ICON[link.direction] ?? ACT_ICON.send;
   return (
     <div
       style={{
