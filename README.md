@@ -82,6 +82,7 @@ Beam started as one-to-one send links and grew into a full chain-abstracted mone
 | 📊 | **Unified balance + per-chain breakdown** | One USD number, with chips showing where the money actually lives. |
 | 📲 | **Installable PWA** | Manifest + icon + theme color — "Add to Home Screen," feels native. |
 | ✉️ | **Email delivery (optional)** | Email a link straight to a recipient via Resend (gated; no-ops without a key). |
+| 🔔 | **Creator notifications** | The creator gets a "💰 you got paid $X" email the moment a request/split/fund/product payment settles (optional, via Resend). Live dashboard updates too. |
 
 Every flow settles on **Arbitrum** via Universal Accounts and onboards with **Magic** — the three sponsor technologies are load-bearing, not decorative.
 
