@@ -7,8 +7,8 @@ export default function manifest(): MetadataRoute.Manifest {
     description: "Send money by link. Any chain. They claim it with a tap.",
     start_url: "/",
     display: "standalone",
-    background_color: "#07070b",
-    theme_color: "#07070b",
+    background_color: "#f3f5f2",
+    theme_color: "#f3f5f2",
     icons: [
       {
         src: "/icon.svg",

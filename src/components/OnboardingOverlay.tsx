@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { BeamBolt } from "@/components/icons";
 
 /**
  * The "✨ securing your account" moment shown once, right after first login,
@@ -34,11 +35,19 @@ export function OnboardingOverlay({ active }: { active: boolean }) {
       className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 px-8 text-center"
       style={{
         background:
-          "radial-gradient(800px 400px at 50% 30%, #1b1340 0%, var(--background) 70%)",
+          "radial-gradient(800px 400px at 50% 30%, var(--at) 0%, var(--paper) 70%)",
       }}
     >
-      <div className="animate-pop text-6xl">✨</div>
-      <h2 className="text-2xl font-black">Securing your account</h2>
+      <div
+        className="animate-pop flex h-16 w-16 items-center justify-center rounded-3xl text-white"
+        style={{
+          background: "var(--ac)",
+          boxShadow: "0 16px 34px -12px var(--ash)",
+        }}
+      >
+        <BeamBolt size={30} />
+      </div>
+      <h2 className="text-2xl font-extrabold tracking-tight">Securing your account</h2>
       <p className="max-w-xs text-sm text-[var(--muted)]">
         Upgrading your login into a chain-abstracted account — no wallet, no seed
         phrase, no new address.

@@ -21,14 +21,31 @@ import { GoogleGlyph } from "@/components/GoogleGlyph";
 import { Qr } from "@/components/Qr";
 import { SettleAnimation } from "@/components/SettleAnimation";
 import { OnboardingOverlay } from "@/components/OnboardingOverlay";
+import {
+  ActivityIcon,
+  BeamBolt,
+  CheckIcon,
+  CopyIcon,
+  GiftIcon,
+  HomeIcon,
+  LogoutIcon,
+  RequestIcon,
+  ScanIcon,
+  SendIcon,
+  SplitIcon,
+  StoreIcon,
+  TipIcon,
+  UserIcon,
+} from "@/components/icons";
 
 const PRESETS: Reason[] = ["rent", "split", "gift", "tip"];
 
+const scrollToId = (id: string) =>
+  document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+
 export default function Home() {
   const { isLoggedIn } = useMagic();
-  return (
-    <main className="beam-shell">{isLoggedIn ? <Dashboard /> : <Landing />}</main>
-  );
+  return isLoggedIn ? <Dashboard /> : <Landing />;
 }
 
 /* ───────────────────────────── Landing (logged-out) ─────────────────────── */
@@ -54,80 +71,196 @@ function Landing() {
 
   const signIn = () => run("email", () => loginWithEmailOTP(email));
 
+  const points = [
+    "No wallet or seed phrase to claim",
+    "Pay from any chain you hold",
+    "Settles instantly as USDC on Arbitrum",
+  ];
+
   return (
-    <div className="flex flex-1 flex-col justify-center gap-8">
-      <div className="text-center">
-        <div className="mb-3 text-5xl font-black tracking-tight">Beam</div>
-        <p className="text-lg text-[var(--muted)]">
-          Send money by link. Any chain.
-          <br />
-          They claim it with a tap.
-        </p>
-      </div>
-
-      <div className="card flex flex-col gap-3">
-        <label className="text-sm text-[var(--muted)]">
-          Sign in to send or claim
-        </label>
-        {googleEnabled && (
-          <>
-            <button
-              className="btn btn-ghost"
-              disabled={busy !== null || !magic}
-              onClick={() => run("google", loginWithGoogle)}
-            >
-              <GoogleGlyph />
-              {busy === "google" ? "Connecting…" : "Continue with Google"}
-            </button>
-            <div className="flex items-center gap-3 text-xs text-[var(--muted)]">
-              <span className="h-px flex-1 bg-[var(--border)]" />
-              or
-              <span className="h-px flex-1 bg-[var(--border)]" />
-            </div>
-          </>
-        )}
-        <input
-          className="input"
-          type="email"
-          inputMode="email"
-          placeholder="you@email.com"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && email && signIn()}
-        />
-        <button
-          className="btn btn-primary"
-          disabled={!email || busy !== null || !magic}
-          onClick={signIn}
-        >
-          {busy === "email" ? "Check your email…" : "Continue with email"}
-        </button>
-        {!process.env.NEXT_PUBLIC_MAGIC_API_KEY && (
-          <p className="text-xs text-[var(--danger)]">
-            Magic key missing — set NEXT_PUBLIC_MAGIC_API_KEY in .env.local
-          </p>
-        )}
-        {error && <p className="text-xs text-[var(--danger)]">{error}</p>}
-      </div>
-
-      <div className="grid grid-cols-3 gap-2 text-center">
-        {[
-          { e: "🔗", t: "Make a link" },
-          { e: "📨", t: "Share it" },
-          { e: "✨", t: "They tap to claim" },
-        ].map((s) => (
-          <div key={s.t} className="card !p-3">
-            <div className="text-2xl">{s.e}</div>
-            <div className="mt-1 text-xs text-[var(--muted)]">{s.t}</div>
+    <div
+      style={{
+        minHeight: "100vh",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "clamp(20px,5vw,48px)",
+        background:
+          "radial-gradient(1000px 560px at 50% -8%, var(--at) 0%, transparent 58%), var(--paper)",
+      }}
+    >
+      <div
+        style={{
+          width: "100%",
+          maxWidth: 1000,
+          display: "flex",
+          flexWrap: "wrap",
+          gap: "clamp(28px,5vw,64px)",
+          alignItems: "center",
+        }}
+      >
+        {/* Pitch */}
+        <div style={{ flex: "1 1 360px", minWidth: 300 }}>
+          <div
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 10,
+              marginBottom: 26,
+            }}
+          >
+            <BeamMark size={38} radius={11} />
+            <span style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-.02em" }}>
+              Beam
+            </span>
           </div>
-        ))}
-      </div>
+          <h1
+            style={{
+              fontSize: "clamp(34px,5.4vw,52px)",
+              lineHeight: 1.04,
+              fontWeight: 800,
+              letterSpacing: "-.035em",
+              margin: "0 0 18px",
+            }}
+          >
+            Send money by link.
+            <br />
+            <span style={{ color: "var(--ap)" }}>Any chain.</span>
+          </h1>
+          <p
+            style={{
+              fontSize: "clamp(16px,2.2vw,19px)",
+              color: "#5e6b62",
+              margin: "0 0 28px",
+              maxWidth: 440,
+            }}
+          >
+            They claim it with a tap — no wallet, no seed phrase, no chain
+            picker. Everything settles as USDC on Arbitrum.
+          </p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 14, maxWidth: 440 }}>
+            {points.map((p) => (
+              <div key={p} style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <span
+                  style={{
+                    width: 26,
+                    height: 26,
+                    borderRadius: 8,
+                    background: "var(--at)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexShrink: 0,
+                    color: "var(--ap)",
+                  }}
+                >
+                  <CheckIcon size={15} />
+                </span>
+                <span style={{ fontSize: 15, color: "#3a453e", fontWeight: 500 }}>
+                  {p}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
 
-      <p className="text-center text-xs text-[var(--muted)]">
-        No wallet. No seed phrase. No chain picker.
-        <br />
-        Powered by Particle Universal Accounts · Magic · settles on Arbitrum
-      </p>
+        {/* Auth card */}
+        <div style={{ flex: "1 1 340px", minWidth: 300, maxWidth: 430 }}>
+          <div
+            className="animate-pop"
+            style={{
+              background: "#fff",
+              border: "1px solid var(--line)",
+              borderRadius: 24,
+              padding: 28,
+              boxShadow:
+                "0 1px 2px rgba(16,21,18,.04),0 24px 50px -28px rgba(16,21,18,.28)",
+            }}
+          >
+            <p
+              style={{
+                fontSize: 13,
+                fontWeight: 600,
+                color: "#79857c",
+                margin: "0 0 4px",
+                textTransform: "uppercase",
+                letterSpacing: ".06em",
+              }}
+            >
+              Get started
+            </p>
+            <h2
+              style={{
+                fontSize: 22,
+                fontWeight: 700,
+                letterSpacing: "-.02em",
+                margin: "0 0 20px",
+              }}
+            >
+              Sign in to send or claim
+            </h2>
+
+            {googleEnabled && (
+              <>
+                <button
+                  className="btn btn-ghost"
+                  style={{ width: "100%", marginBottom: 4 }}
+                  disabled={busy !== null || !magic}
+                  onClick={() => run("google", loginWithGoogle)}
+                >
+                  <GoogleGlyph />
+                  {busy === "google" ? "Connecting…" : "Continue with Google"}
+                </button>
+                <Divider>OR</Divider>
+              </>
+            )}
+
+            <input
+              className="input"
+              style={{ marginBottom: 12 }}
+              type="email"
+              inputMode="email"
+              placeholder="you@email.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && email && signIn()}
+            />
+            <button
+              className="btn btn-primary"
+              style={{ width: "100%" }}
+              disabled={!email || busy !== null || !magic}
+              onClick={signIn}
+            >
+              {busy === "email" ? "Check your email…" : "Continue with email"}
+            </button>
+
+            {!process.env.NEXT_PUBLIC_MAGIC_API_KEY && (
+              <p style={{ fontSize: 12, color: "var(--danger)", marginTop: 12 }}>
+                Magic key missing — set NEXT_PUBLIC_MAGIC_API_KEY in .env.local
+              </p>
+            )}
+            {error && (
+              <p style={{ fontSize: 12, color: "var(--danger)", marginTop: 12 }}>
+                {error}
+              </p>
+            )}
+
+            <p
+              style={{
+                fontSize: 12,
+                color: "#9aa69d",
+                textAlign: "center",
+                margin: "18px 0 0",
+                lineHeight: 1.5,
+              }}
+            >
+              Powered by Particle Universal Accounts · Magic
+              <br />
+              Settles on Arbitrum
+            </p>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -143,6 +276,7 @@ function Dashboard() {
   const [toast, setToast] = useState<string | null>(null);
   const [settle, setSettle] = useState<SettleResult | null>(null);
   const [copiedAddr, setCopiedAddr] = useState(false);
+  const [mode, setMode] = useState<Direction>("send");
 
   const copyAddress = () => {
     if (!address) return;
@@ -164,6 +298,12 @@ function Dashboard() {
     return () => clearInterval(t);
   }, [loadLinks]);
 
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 3200);
+    return () => clearTimeout(t);
+  }, [toast]);
+
   const pay = async (link: BeamLink) => {
     if (!link.claimantAddress) return;
     setPayingId(link.id);
@@ -179,7 +319,7 @@ function Dashboard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ txId: res.transactionId }),
       });
-      setToast(`Sent ${usd(link.amountUsd)} — settled on Arbitrum 🎉`);
+      setToast(`Sent ${usd(link.amountUsd)} — settled on Arbitrum`);
       setSettle(res);
       await Promise.all([loadLinks(), refreshBalance()]);
     } catch (e) {
@@ -202,191 +342,511 @@ function Dashboard() {
   };
 
   const initials = (email ?? "?").slice(0, 1).toUpperCase();
+  const balanceStr = loading ? "…" : usd(totalUsd);
 
   return (
-    <>
+    <div style={{ display: "flex", minHeight: "100vh" }}>
       <OnboardingOverlay active={loading} />
-      <header className="flex items-center justify-between">
-        <span className="text-2xl font-black tracking-tight">Beam</span>
-        <div className="flex items-center gap-2">
-          <div className="grid h-9 w-9 place-items-center rounded-full bg-[var(--accent)] text-sm font-bold">
-            {initials}
+
+      {/* DESKTOP SIDEBAR */}
+      <aside
+        className="show-desktop"
+        style={{
+          width: 268,
+          flexShrink: 0,
+          borderRight: "1px solid var(--line)",
+          background: "#fff",
+          flexDirection: "column",
+          padding: "22px 16px",
+          gap: 6,
+          position: "sticky",
+          top: 0,
+          height: "100vh",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "4px 8px 16px" }}>
+          <BeamMark size={34} radius={10} />
+          <span style={{ fontSize: 19, fontWeight: 800, letterSpacing: "-.02em" }}>Beam</span>
+        </div>
+
+        <div
+          style={{
+            background: "linear-gradient(150deg,var(--ab),var(--ap))",
+            borderRadius: 16,
+            padding: 16,
+            marginBottom: 10,
+            color: "#fff",
+            boxShadow: "0 14px 28px -16px var(--ashd)",
+          }}
+        >
+          <p style={{ margin: 0, fontSize: 12, fontWeight: 600, opacity: 0.85 }}>Balance</p>
+          <p
+            style={{
+              margin: "2px 0 0",
+              fontSize: 26,
+              fontWeight: 800,
+              letterSpacing: "-.02em",
+              fontVariantNumeric: "tabular-nums",
+            }}
+          >
+            {balanceStr}
+          </p>
+          <p style={{ margin: "4px 0 0", fontSize: 11, opacity: 0.8 }}>
+            one balance · every chain
+          </p>
+        </div>
+
+        <NavButton icon={<HomeIcon />} label="Home" active onClick={() => scrollToId("top")} />
+        <NavLink href="/pay" icon={<ScanIcon />} label="Pay anyone" />
+        <NavButton icon={<ActivityIcon />} label="Activity" onClick={() => scrollToId("activity")} />
+        <NavButton icon={<UserIcon />} label="Your @handle" onClick={() => scrollToId("handle")} />
+
+        <div style={{ flex: 1 }} />
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            padding: 10,
+            borderRadius: 14,
+            background: "var(--field)",
+          }}
+        >
+          <Avatar initials={initials} size={34} />
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <p style={{ margin: 0, fontSize: 13, fontWeight: 700 }}>
+              {email ? email.split("@")[0] : "You"}
+            </p>
+            <p
+              style={{
+                margin: 0,
+                fontSize: 11,
+                color: "#9aa69d",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {short(address)}
+            </p>
           </div>
           <button
-            className="text-xs text-[var(--muted)] underline"
             onClick={logout}
+            title="Log out"
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              color: "#9aa69d",
+              display: "flex",
+              padding: 4,
+            }}
           >
-            logout
+            <LogoutIcon size={18} />
           </button>
         </div>
-      </header>
+      </aside>
 
-      <section className="card text-center">
-        <p className="text-sm text-[var(--muted)]">Your balance</p>
-        <p className="my-1 text-5xl font-black tracking-tight">
-          {loading ? "…" : usd(totalUsd)}
-        </p>
-        <p className="text-xs text-[var(--muted)]">
-          one balance · every chain · no chain picker
-        </p>
-        <ChainBreakdown assets={primaryAssets?.assets} />
-        {!loading && totalUsd <= 0 && (
-          <p className="mt-3 rounded-xl bg-[var(--surface-2)] px-3 py-2 text-xs text-[var(--muted)]">
-            Add a little USDC on any chain to start sending — Beam routes it
-            automatically.
-          </p>
-        )}
-        {address && (
+      {/* MAIN COLUMN */}
+      <div id="top" style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
+        {/* MOBILE HEADER */}
+        <header
+          className="show-mobile"
+          style={{
+            position: "sticky",
+            top: 0,
+            zIndex: 30,
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "13px 18px",
+            background: "rgba(243,245,242,.88)",
+            backdropFilter: "blur(12px)",
+            borderBottom: "1px solid var(--line)",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+            <BeamMark size={30} radius={9} />
+            <span style={{ fontSize: 17, fontWeight: 800, letterSpacing: "-.02em" }}>Beam</span>
+          </div>
+          <Avatar initials={initials} size={34} />
+        </header>
+
+        <div
+          style={{
+            flex: 1,
+            width: "100%",
+            maxWidth: 1120,
+            margin: "0 auto",
+            padding: "clamp(16px,3.5vw,36px)",
+            paddingBottom: 96,
+          }}
+        >
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 20, alignItems: "flex-start" }}>
+            {/* LEFT COLUMN */}
+            <div
+              style={{
+                flex: "1.3 1 380px",
+                minWidth: 300,
+                display: "flex",
+                flexDirection: "column",
+                gap: 18,
+              }}
+            >
+              <BalanceHero
+                balanceStr={balanceStr}
+                assets={primaryAssets?.assets}
+                address={address}
+                copied={copiedAddr}
+                onCopy={copyAddress}
+              />
+
+              <QuickActions
+                onMode={(m) => {
+                  setMode(m);
+                  scrollToId("create");
+                }}
+              />
+
+              <LinkForm
+                address={address!}
+                senderName={email ?? undefined}
+                onCreated={loadLinks}
+                mode={mode}
+                setMode={setMode}
+              />
+
+              {settle && (
+                <div className="card animate-pop" style={{ textAlign: "center" }}>
+                  <SettleAnimation
+                    sourceChainIds={settle.sourceChainIds}
+                    gasless={settle.freeGasFee}
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* RIGHT COLUMN */}
+            <div
+              style={{
+                flex: "1 1 320px",
+                minWidth: 300,
+                display: "flex",
+                flexDirection: "column",
+                gap: 18,
+              }}
+            >
+              <Activity links={links} payingId={payingId} onPay={pay} />
+              <HandleCard address={address!} />
+            </div>
+          </div>
+        </div>
+
+        {/* MOBILE BOTTOM NAV */}
+        <nav
+          className="show-mobile"
+          style={{
+            position: "fixed",
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: 40,
+            background: "rgba(255,255,255,.92)",
+            backdropFilter: "blur(14px)",
+            borderTop: "1px solid var(--line)",
+            alignItems: "flex-end",
+            justifyContent: "space-around",
+            padding: "9px 6px 14px",
+          }}
+        >
+          <TabButton icon={<HomeIcon size={22} />} label="Home" active onClick={() => scrollToId("top")} />
+          <TabLink href="/pay" icon={<ScanIcon size={22} />} label="Pay" />
           <button
-            onClick={copyAddress}
-            className="mx-auto mt-3 block rounded-full border border-[var(--border)] bg-[var(--surface-2)] px-3 py-1.5 text-xs text-[var(--muted)]"
-            title="Deposit USDC to this address on any supported chain"
+            onClick={() => scrollToId("create")}
+            style={{ background: "none", border: "none", cursor: "pointer", flex: 1, display: "flex", justifyContent: "center" }}
+            aria-label="Create"
           >
-            {copiedAddr ? "Address copied ✓" : `Deposit address: ${short(address)} · copy`}
+            <span
+              style={{
+                width: 48,
+                height: 48,
+                borderRadius: 16,
+                background: "var(--ac)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                boxShadow: "0 10px 20px -8px var(--ash)",
+                marginTop: -22,
+                color: "#fff",
+              }}
+            >
+              <SendIcon size={22} />
+            </span>
           </button>
-        )}
-      </section>
+          <TabButton icon={<ActivityIcon size={22} />} label="Activity" onClick={() => scrollToId("activity")} />
+          <TabButton icon={<UserIcon size={22} />} label="You" onClick={() => scrollToId("handle")} />
+        </nav>
+      </div>
 
-      <Link href="/pay" className="btn btn-ghost">
-        ⛶ Pay anyone — scan or paste an address
-      </Link>
-
-      <LinkForm
-        address={address!}
-        senderName={email ?? undefined}
-        onCreated={loadLinks}
-      />
-
-      <HandleCard address={address!} />
-
+      {/* TOAST */}
       {toast && (
-        <div className="card animate-pop border-[var(--success)] text-center text-sm text-[var(--success)]">
+        <div
+          style={{
+            position: "fixed",
+            left: "50%",
+            bottom: 88,
+            transform: "translateX(-50%)",
+            zIndex: 90,
+            background: "var(--ink)",
+            color: "#fff",
+            borderRadius: 14,
+            padding: "13px 20px",
+            fontSize: 14,
+            fontWeight: 600,
+            boxShadow: "0 16px 36px -12px rgba(0,0,0,.5)",
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            animation: "beamUp .3s ease both",
+            maxWidth: "90vw",
+          }}
+        >
+          <span style={{ color: "var(--an)", display: "flex" }}>
+            <CheckIcon size={18} />
+          </span>
           {toast}
-          {settle && (
-            <SettleAnimation
-              sourceChainIds={settle.sourceChainIds}
-              gasless={settle.freeGasFee}
-            />
-          )}
         </div>
       )}
-
-      <Activity links={links} payingId={payingId} onPay={pay} />
-    </>
+    </div>
   );
 }
 
-/* ───────────────────────────── @handle card ─────────────────────────────── */
+/* ───────────────────────────── Balance hero ─────────────────────────────── */
 
-function HandleCard({ address }: { address: string }) {
-  const [name, setName] = useState<string | null>(null);
-  const [input, setInput] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
-
-  useEffect(() => {
-    fetch(`/api/username?address=${address}`)
-      .then((r) => r.json())
-      .then((d) => setName(d.name ?? null))
-      .catch(() => {});
-  }, [address]);
-
-  const claim = async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/username", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ address, name: input }),
-      });
-      const d = await res.json();
-      if (d.ok) setName(d.username);
-      else setError(d.error ?? "Couldn't claim that handle");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const url =
-    name && typeof window !== "undefined"
-      ? `${window.location.origin}/u/${name}`
-      : "";
-
-  if (name) {
-    return (
-      <div className="card flex flex-col gap-3">
-        <p className="text-sm text-[var(--muted)]">Your pay-me link</p>
-        <p className="text-xl font-bold">@{name}</p>
-        <Qr url={url} />
-        <button
-          className="btn btn-ghost"
-          onClick={() => {
-            navigator.clipboard.writeText(url);
-            setCopied(true);
-            setTimeout(() => setCopied(false), 1500);
+function BalanceHero({
+  balanceStr,
+  assets,
+  address,
+  copied,
+  onCopy,
+}: {
+  balanceStr: string;
+  assets?: {
+    chainAggregation: { token: { chainId: number }; amountInUSD: number }[];
+  }[];
+  address?: string | null;
+  copied: boolean;
+  onCopy: () => void;
+}) {
+  return (
+    <div
+      style={{
+        background: "linear-gradient(150deg,var(--ab) 0%,var(--ad) 100%)",
+        borderRadius: 24,
+        padding: "clamp(20px,3vw,28px)",
+        color: "#fff",
+        boxShadow: "0 1px 2px rgba(0,0,0,.05),0 26px 50px -30px var(--ashd)",
+        position: "relative",
+        overflow: "hidden",
+      }}
+    >
+      <div
+        style={{
+          position: "absolute",
+          right: -40,
+          top: -40,
+          width: 180,
+          height: 180,
+          borderRadius: "50%",
+          background: "rgba(255,255,255,.1)",
+        }}
+      />
+      <div style={{ position: "relative" }}>
+        <p style={{ margin: 0, fontSize: 13, fontWeight: 600, opacity: 0.85 }}>Your balance</p>
+        <p
+          style={{
+            margin: "4px 0 2px",
+            fontSize: "clamp(38px,6vw,52px)",
+            fontWeight: 800,
+            letterSpacing: "-.03em",
+            lineHeight: 1,
+            fontVariantNumeric: "tabular-nums",
           }}
         >
-          {copied ? "Copied ✓" : `Copy ${url.replace(/^https?:\/\//, "")}`}
-        </button>
+          {balanceStr}
+        </p>
+        <p style={{ margin: "6px 0 0", fontSize: 12, opacity: 0.82 }}>
+          one balance · every chain · no chain picker
+        </p>
+        <ChainChips assets={assets} />
+        {address && (
+          <button
+            onClick={onCopy}
+            style={{
+              marginTop: 16,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+              background: "rgba(255,255,255,.14)",
+              border: "1px solid rgba(255,255,255,.25)",
+              borderRadius: 999,
+              padding: "8px 13px",
+              fontSize: 12,
+              fontWeight: 600,
+              color: "#fff",
+              cursor: "pointer",
+            }}
+            title="Deposit USDC to this address on any supported chain"
+          >
+            <CopyIcon size={14} />
+            {copied ? "Address copied ✓" : `Deposit · ${short(address)}`}
+          </button>
+        )}
       </div>
-    );
-  }
+    </div>
+  );
+}
 
+/** Real chain breakdown rendered as translucent pills on the gradient hero. */
+function ChainChips({
+  assets,
+}: {
+  assets?: {
+    chainAggregation: { token: { chainId: number }; amountInUSD: number }[];
+  }[];
+}) {
+  if (!assets?.length) return null;
+  const byChain = new Map<number, number>();
+  for (const a of assets)
+    for (const c of a.chainAggregation)
+      if (c.amountInUSD > 0)
+        byChain.set(c.token.chainId, (byChain.get(c.token.chainId) ?? 0) + c.amountInUSD);
+  const rows = [...byChain.entries()].sort((a, b) => b[1] - a[1]);
+  if (!rows.length) return null;
+  const dot: Record<number, string> = {
+    8453: "#0052FF",
+    42161: "#28A0F0",
+    1: "#9AB0F0",
+    56: "#F0B90B",
+    137: "#8247E5",
+  };
   return (
-    <div className="card flex flex-col gap-3">
-      <p className="text-sm text-[var(--muted)]">
-        Claim your @handle — a permanent link anyone can pay you at
-      </p>
-      <div className="flex items-center gap-2">
-        <span className="text-xl font-bold text-[var(--muted)]">@</span>
-        <input
-          className="input"
-          placeholder="yourname"
-          value={input}
-          maxLength={20}
-          onChange={(e) =>
-            setInput(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))
-          }
-          onKeyDown={(e) => e.key === "Enter" && input && claim()}
-        />
-      </div>
-      <button
-        className="btn btn-primary"
-        disabled={input.length < 3 || busy}
-        onClick={claim}
-      >
-        {busy ? "Claiming…" : "Claim handle"}
-      </button>
-      {error && <p className="text-xs text-[var(--danger)]">{error}</p>}
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 16 }}>
+      {rows.map(([id, amt]) => (
+        <div
+          key={id}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 7,
+            background: "rgba(255,255,255,.16)",
+            borderRadius: 999,
+            padding: "6px 11px",
+            fontSize: 12,
+            fontWeight: 600,
+          }}
+        >
+          <span
+            style={{
+              width: 8,
+              height: 8,
+              borderRadius: "50%",
+              background: dot[id] ?? "#cfc2ff",
+            }}
+          />
+          {chainName(id)} {usd(amt)}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ───────────────────────────── Quick actions ────────────────────────────── */
+
+function QuickActions({ onMode }: { onMode: (m: Direction) => void }) {
+  const items: { label: string; icon: React.ReactNode; onClick: () => void; href?: string }[] = [
+    { label: "Send", icon: <SendIcon size={20} />, onClick: () => onMode("send") },
+    { label: "Request", icon: <RequestIcon size={20} />, onClick: () => onMode("request") },
+    { label: "Split", icon: <SplitIcon size={20} />, onClick: () => onMode("split") },
+    { label: "Pay", icon: <ScanIcon size={20} />, onClick: () => {}, href: "/pay" },
+  ];
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10 }}>
+      {items.map((q) => {
+        const inner = (
+          <>
+            <span
+              style={{
+                width: 42,
+                height: 42,
+                borderRadius: 13,
+                background: "var(--at)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: "var(--ap)",
+              }}
+            >
+              {q.icon}
+            </span>
+            <span style={{ fontSize: 12, fontWeight: 700, color: "#3a453e" }}>{q.label}</span>
+          </>
+        );
+        const style: React.CSSProperties = {
+          background: "#fff",
+          border: "1px solid var(--line)",
+          borderRadius: 18,
+          padding: "14px 8px",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: 8,
+          cursor: "pointer",
+          boxShadow: "0 1px 2px rgba(16,21,18,.04)",
+        };
+        return q.href ? (
+          <Link key={q.label} href={q.href} style={style}>
+            {inner}
+          </Link>
+        ) : (
+          <button key={q.label} onClick={q.onClick} style={style}>
+            {inner}
+          </button>
+        );
+      })}
     </div>
   );
 }
 
 /* ───────────────────── Link form (pay people / create campaign) ─────────── */
 
-const PAY_MODES: Direction[] = ["send", "request", "split"];
-const CREATE_MODES: Direction[] = ["fund", "product"];
-const MODE_LABEL: Record<Direction, string> = {
-  send: "Send",
-  request: "Request",
-  split: "Split",
-  fund: "Fundraise",
-  product: "Sell",
+const MODES: { key: Direction; label: string }[] = [
+  { key: "send", label: "Send" },
+  { key: "request", label: "Request" },
+  { key: "split", label: "Split" },
+  { key: "fund", label: "Fund" },
+  { key: "product", label: "Sell" },
+];
+
+const REASON_ICON: Record<Exclude<Reason, "none">, React.ReactNode> = {
+  rent: <HomeIcon size={15} />,
+  split: <SplitIcon size={15} />,
+  gift: <GiftIcon size={15} />,
+  tip: <TipIcon size={15} />,
 };
 
 function LinkForm({
   address,
   senderName,
   onCreated,
+  mode,
+  setMode,
 }: {
   address: string;
   senderName?: string;
   onCreated: () => void;
+  mode: Direction;
+  setMode: (m: Direction) => void;
 }) {
-  const [tier, setTier] = useState<"pay" | "create">("pay");
-  const [mode, setMode] = useState<Direction>("send");
   const [amount, setAmount] = useState("");
   const [ways, setWays] = useState("");
   const [title, setTitle] = useState("");
@@ -398,14 +858,12 @@ function LinkForm({
   const [created, setCreated] = useState<BeamLink | null>(null);
   const [copied, setCopied] = useState(false);
 
-  const isCreate = tier === "create";
+  const isCreate = mode === "fund" || mode === "product";
   const isProduct = mode === "product";
   const isFund = mode === "fund";
-
-  const switchTier = (t: "pay" | "create") => {
-    setTier(t);
-    setMode(t === "pay" ? "send" : "fund");
-  };
+  const isSplit = mode === "split";
+  const amtNum = Number(amount);
+  const canCreate = !!amount && amtNum > 0 && (!isCreate || !!title);
 
   const create = async () => {
     setBusy(true);
@@ -422,7 +880,7 @@ function LinkForm({
           unlockUrl: isProduct ? unlockUrl || undefined : undefined,
           senderAddress: address,
           senderName,
-          splitWays: mode === "split" ? Number(ways) || undefined : undefined,
+          splitWays: isSplit ? Number(ways) || undefined : undefined,
         }),
       });
       if (res.ok) {
@@ -474,119 +932,144 @@ function LinkForm({
               ? `Get "${created.title}" for ${usd(created.amountUsd)} on Beam`
               : `${usd(created.amountUsd)} for you`;
     try {
-      if (navigator.share) {
-        await navigator.share({ title: "Beam", text, url });
-      } else {
+      if (navigator.share) await navigator.share({ title: "Beam", text, url });
+      else {
         await navigator.clipboard.writeText(url);
         setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
       }
     } catch {
       /* user cancelled share */
     }
   };
 
+  /* ── Created state ── */
   if (created) {
     const d = created.direction;
     const headline =
-      d === "split"
-        ? "Split ready — share it with the group"
+      d === "request"
+        ? "Request ready — share it"
         : d === "fund"
-          ? "Campaign live — share it everywhere"
+          ? "Campaign live — share it"
           : d === "product"
-            ? "Product live — share it to sell"
-            : d === "request"
-              ? "Request ready — share it"
+            ? "Product live — share it"
+            : d === "split"
+              ? "Split ready — share it"
               : "Link ready — share it";
+    const url = claimUrl(created.id);
     return (
-      <div className="card animate-pop flex flex-col gap-3">
-        <p className="text-sm text-[var(--muted)]">{headline}</p>
-        <p className="text-2xl font-bold">
-          {created.title ? `${created.title} · ` : REASON_META[created.reason].emoji + " "}
-          {usd(created.amountUsd)}
-          {d === "product" ? (
-            <span className="ml-1 text-sm font-normal text-[var(--muted)]">each</span>
-          ) : d === "fund" ? (
-            <span className="ml-1 text-sm font-normal text-[var(--muted)]">goal</span>
-          ) : null}
+      <div id="create" className="card animate-pop">
+        <p style={{ margin: "0 0 4px", fontSize: 13, fontWeight: 600, color: "#79857c" }}>
+          {headline}
         </p>
-        <Qr url={claimUrl(created.id)} />
-        <div className="truncate rounded-xl bg-[var(--surface-2)] px-3 py-2 text-xs text-[var(--accent-2)]">
-          {claimUrl(created.id)}
-        </div>
-        <div className="flex gap-2">
-          <button className="btn btn-primary flex-1" onClick={share}>
-            {copied ? "Copied ✓" : "Share link"}
-          </button>
-          <button className="btn btn-ghost" onClick={reset}>
-            New
-          </button>
+        <p style={{ margin: "0 0 18px", fontSize: 22, fontWeight: 800, letterSpacing: "-.02em" }}>
+          {created.title ? `${created.title} · ` : `${REASON_META[created.reason].emoji} `}
+          {usd(created.amountUsd)}
+          {d === "product" ? " each" : d === "fund" ? " goal" : ""}
+        </p>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 20, alignItems: "center" }}>
+          <Qr url={url} size={147} />
+          <div style={{ flex: 1, minWidth: 200, display: "flex", flexDirection: "column", gap: 10 }}>
+            <div
+              style={{
+                fontFamily: "var(--font-jetbrains-mono), monospace",
+                fontSize: 13,
+                color: "var(--ap)",
+                background: "var(--at)",
+                borderRadius: 12,
+                padding: "11px 13px",
+                wordBreak: "break-all",
+                fontWeight: 500,
+              }}
+            >
+              {url}
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button className="btn btn-primary" style={{ flex: 1 }} onClick={share}>
+                {copied ? "Copied ✓" : "Share link"}
+              </button>
+              <button className="btn btn-ghost" onClick={reset} style={{ background: "var(--field)", border: "1px solid var(--line)", color: "#3a453e" }}>
+                New
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     );
   }
 
-  const amountLabel = isFund ? "Goal" : isProduct ? "Price" : null;
+  /* ── Form state ── */
   const subtitle = isFund
-    ? "Crowdfund — anyone can chip in toward your goal"
+    ? "Crowdfund — anyone chips in toward your goal"
     : isProduct
-      ? "Sell a program — buyers pay, then unlock the content"
+      ? "Sell a program — buyers pay, then unlock"
       : mode === "request"
         ? "Request money — they pay with a tap"
-        : mode === "split"
+        : isSplit
           ? "Split a bill — everyone pays their share"
           : "Send money — they claim it with a tap";
+  const suffix =
+    isFund ? "goal" : isProduct ? "each" : isSplit && Number(ways) >= 2 && amount
+      ? `${usd(amtNum / Number(ways))} ea`
+      : null;
+  const createLabel = busy
+    ? "Creating…"
+    : mode === "request"
+      ? "Create request link"
+      : isSplit
+        ? "Create split link"
+        : isFund
+          ? "Launch campaign"
+          : isProduct
+            ? "List product"
+            : "Create payment link";
 
   return (
-    <div className="card flex flex-col gap-3">
-      {/* Tier 1: Pay people / Create a campaign */}
-      <div className="grid grid-cols-2 gap-1 rounded-2xl bg-[var(--surface-2)] p-1">
-        {(
-          [
-            ["pay", "Pay people"],
-            ["create", "Create a campaign"],
-          ] as const
-        ).map(([t, label]) => (
-          <button
-            key={t}
-            onClick={() => switchTier(t)}
-            className="rounded-xl py-2 text-xs font-semibold transition-colors"
-            style={{
-              background: tier === t ? "var(--accent)" : "transparent",
-              color: tier === t ? "white" : "var(--muted)",
-            }}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {/* Tier 2: mode within the chosen tier */}
+    <div id="create" className="card">
+      {/* mode tabs */}
       <div
-        className="grid gap-1 rounded-2xl bg-[var(--surface-2)] p-1"
         style={{
-          gridTemplateColumns: `repeat(${(isCreate ? CREATE_MODES : PAY_MODES).length}, 1fr)`,
+          display: "flex",
+          background: "#f2f5f1",
+          borderRadius: 14,
+          padding: 4,
+          gap: 3,
+          marginBottom: 16,
         }}
       >
-        {(isCreate ? CREATE_MODES : PAY_MODES).map((m) => (
-          <button
-            key={m}
-            onClick={() => setMode(m)}
-            className="rounded-xl py-2 text-sm font-semibold transition-colors"
-            style={{
-              background: mode === m ? "var(--accent)" : "transparent",
-              color: mode === m ? "white" : "var(--muted)",
-            }}
-          >
-            {MODE_LABEL[m]}
-          </button>
-        ))}
+        {MODES.map((t) => {
+          const on = mode === t.key;
+          return (
+            <button
+              key={t.key}
+              onClick={() => {
+                setMode(t.key);
+                setReason("none");
+              }}
+              style={{
+                flex: 1,
+                border: "none",
+                borderRadius: 11,
+                padding: "9px 4px",
+                fontSize: 13,
+                fontWeight: 700,
+                cursor: "pointer",
+                background: on ? "var(--ink)" : "transparent",
+                color: on ? "#fff" : "#79857c",
+              }}
+            >
+              {t.label}
+            </button>
+          );
+        })}
       </div>
 
-      <p className="text-sm text-[var(--muted)]">{subtitle}</p>
+      <p style={{ margin: "0 0 14px", fontSize: 13, color: "#79857c" }}>{subtitle}</p>
 
       {isCreate && (
         <input
           className="input"
+          style={{ marginBottom: 12 }}
           placeholder={isProduct ? "Product name" : "Campaign title"}
           value={title}
           maxLength={80}
@@ -594,40 +1077,60 @@ function LinkForm({
         />
       )}
 
-      <div className="flex items-center gap-2">
-        <span className="text-3xl font-bold text-[var(--muted)]">$</span>
+      {/* amount */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          background: "var(--field)",
+          border: "1px solid var(--line-2)",
+          borderRadius: 16,
+          padding: "6px 16px",
+          marginBottom: 14,
+        }}
+      >
+        <span style={{ fontSize: 30, fontWeight: 800, color: "#b7c0b8" }}>$</span>
         <input
-          className="input text-3xl font-bold"
-          inputMode="decimal"
-          placeholder="0"
           value={amount}
           onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))}
+          inputMode="decimal"
+          placeholder="0"
+          style={{
+            flex: 1,
+            width: "100%",
+            border: "none",
+            background: "transparent",
+            fontSize: 34,
+            fontWeight: 800,
+            letterSpacing: "-.02em",
+            color: "var(--ink)",
+            outline: "none",
+            fontVariantNumeric: "tabular-nums",
+            minWidth: 0,
+            fontFamily: "inherit",
+          }}
         />
-        {amountLabel && (
-          <span className="shrink-0 text-sm text-[var(--muted)]">{amountLabel}</span>
+        {suffix && (
+          <span style={{ fontSize: 13, fontWeight: 600, color: "#9aa69d" }}>{suffix}</span>
         )}
       </div>
 
-      {mode === "split" && (
-        <div className="flex items-center gap-2">
-          <input
-            className="input"
-            inputMode="numeric"
-            placeholder="Split how many ways? (e.g. 4)"
-            value={ways}
-            onChange={(e) => setWays(e.target.value.replace(/[^0-9]/g, ""))}
-          />
-          {amount && Number(ways) >= 2 && (
-            <span className="shrink-0 text-sm text-[var(--muted)]">
-              {usd(Number(amount) / Number(ways))} each
-            </span>
-          )}
-        </div>
+      {isSplit && (
+        <input
+          className="input"
+          style={{ marginBottom: 14 }}
+          inputMode="numeric"
+          placeholder="Split how many ways? (e.g. 4)"
+          value={ways}
+          onChange={(e) => setWays(e.target.value.replace(/[^0-9]/g, ""))}
+        />
       )}
 
       {isProduct && (
         <input
           className="input"
+          style={{ marginBottom: 14 }}
           placeholder="Unlock link revealed after purchase (course, file, invite…)"
           value={unlockUrl}
           maxLength={500}
@@ -635,8 +1138,8 @@ function LinkForm({
         />
       )}
 
-      {!isProduct && (
-        <div className="flex flex-wrap gap-2">
+      {!isCreate && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
           {PRESETS.map((r) => (
             <button
               key={r}
@@ -644,7 +1147,10 @@ function LinkForm({
               data-active={reason === r}
               onClick={() => setReason(reason === r ? "none" : r)}
             >
-              {REASON_META[r].emoji} {REASON_META[r].label}
+              <span style={{ display: "flex", color: reason === r ? "var(--ap)" : "#9aa69d" }}>
+                {REASON_ICON[r as Exclude<Reason, "none">]}
+              </span>
+              {REASON_META[r].label}
             </button>
           ))}
         </div>
@@ -652,6 +1158,7 @@ function LinkForm({
 
       <input
         className="input"
+        style={{ marginBottom: 14 }}
         placeholder={isCreate ? "Description (optional)" : "What's it for? (optional)"}
         value={note}
         maxLength={140}
@@ -661,6 +1168,7 @@ function LinkForm({
       {(mode === "send" || mode === "request") && (
         <input
           className="input"
+          style={{ marginBottom: 16 }}
           type="email"
           inputMode="email"
           placeholder="Email it to them (optional)"
@@ -670,32 +1178,177 @@ function LinkForm({
       )}
 
       <button
-        className="btn btn-primary"
-        disabled={
-          !amount ||
-          Number(amount) <= 0 ||
-          busy ||
-          (isCreate && !title)
-        }
         onClick={create}
+        disabled={!canCreate || busy}
+        style={{
+          width: "100%",
+          border: "none",
+          borderRadius: 14,
+          padding: 15,
+          fontSize: 15,
+          fontWeight: 700,
+          color: "#fff",
+          cursor: canCreate && !busy ? "pointer" : "not-allowed",
+          background: canCreate ? "var(--ac)" : "var(--adm)",
+          boxShadow: canCreate ? "0 12px 24px -12px var(--ash)" : "none",
+        }}
       >
-        {busy
-          ? "Creating…"
-          : mode === "request"
-            ? "Create request link"
-            : mode === "split"
-              ? "Create split link"
-              : isFund
-                ? "Launch campaign"
-                : isProduct
-                  ? "List product"
-                  : "Create payment link"}
+        {createLabel}
       </button>
     </div>
   );
 }
 
+/* ───────────────────────────── @handle card ─────────────────────────────── */
+
+function HandleCard({ address }: { address: string }) {
+  const [name, setName] = useState<string | null>(null);
+  const [input, setInput] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    fetch(`/api/username?address=${address}`)
+      .then((r) => r.json())
+      .then((d) => setName(d.name ?? null))
+      .catch(() => {});
+  }, [address]);
+
+  const claim = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/username", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ address, name: input }),
+      });
+      const d = await res.json();
+      if (d.ok) setName(d.username);
+      else setError(d.error ?? "Couldn't claim that handle");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const url =
+    name && typeof window !== "undefined" ? `${window.location.origin}/u/${name}` : "";
+
+  if (name) {
+    return (
+      <div
+        id="handle"
+        style={{ background: "var(--ink)", borderRadius: 20, padding: 20, color: "#fff" }}
+      >
+        <p style={{ margin: "0 0 3px", fontSize: 12, fontWeight: 600, color: "#8fa395" }}>
+          Your pay-me link
+        </p>
+        <p style={{ margin: "0 0 14px", fontSize: 20, fontWeight: 800, letterSpacing: "-.01em" }}>
+          @{name}
+        </p>
+        <div style={{ display: "flex", gap: 10 }}>
+          <button
+            onClick={() => {
+              navigator.clipboard.writeText(url);
+              setCopied(true);
+              setTimeout(() => setCopied(false), 1500);
+            }}
+            style={{
+              flex: 1,
+              background: "#fff",
+              border: "none",
+              borderRadius: 12,
+              padding: 11,
+              fontSize: 13,
+              fontWeight: 700,
+              color: "var(--ink)",
+              cursor: "pointer",
+            }}
+          >
+            {copied ? "Copied ✓" : "Copy link"}
+          </button>
+          <Link
+            href={`/u/${name}`}
+            style={{
+              background: "rgba(255,255,255,.12)",
+              border: "1px solid rgba(255,255,255,.2)",
+              borderRadius: 12,
+              padding: "11px 16px",
+              fontSize: 13,
+              fontWeight: 700,
+              color: "#fff",
+              textDecoration: "none",
+              display: "inline-flex",
+              alignItems: "center",
+            }}
+          >
+            View page
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div id="handle" className="card" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "#79857c" }}>
+        Claim your @handle — a permanent link anyone can pay you at
+      </p>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          background: "var(--field)",
+          border: "1px solid var(--line-2)",
+          borderRadius: 13,
+          padding: "0 14px",
+        }}
+      >
+        <span style={{ fontSize: 18, fontWeight: 700, color: "#9aa69d" }}>@</span>
+        <input
+          placeholder="yourname"
+          value={input}
+          maxLength={20}
+          onChange={(e) => setInput(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))}
+          onKeyDown={(e) => e.key === "Enter" && input && claim()}
+          style={{
+            flex: 1,
+            border: "none",
+            background: "transparent",
+            padding: "12px 0",
+            fontSize: 15,
+            outline: "none",
+            color: "var(--ink)",
+            fontFamily: "inherit",
+          }}
+        />
+      </div>
+      <button
+        className="btn btn-primary"
+        disabled={input.length < 3 || busy}
+        onClick={claim}
+      >
+        {busy ? "Claiming…" : "Claim handle"}
+      </button>
+      {error && <p style={{ fontSize: 12, color: "var(--danger)" }}>{error}</p>}
+    </div>
+  );
+}
+
 /* ───────────────────────────── Activity feed ────────────────────────────── */
+
+const ACT_ICON: Record<
+  Direction,
+  { bg: string; color: string; icon: (s: number) => React.ReactNode }
+> = {
+  send: { bg: "var(--at)", color: "var(--ap)", icon: (s) => <SendIcon size={s} /> },
+  request: { bg: "#eaf0ff", color: "#2f6bff", icon: (s) => <RequestIcon size={s} /> },
+  split: { bg: "#f1ecff", color: "#7c5cff", icon: (s) => <SplitIcon size={s} /> },
+  fund: { bg: "#fff1e6", color: "#e8893b", icon: (s) => <GiftIcon size={s} /> },
+  product: { bg: "#ffedf3", color: "#e5487d", icon: (s) => <StoreIcon size={s} /> },
+};
 
 function Activity({
   links,
@@ -706,60 +1359,139 @@ function Activity({
   payingId: string | null;
   onPay: (link: BeamLink) => void;
 }) {
-  if (!links.length) return null;
   return (
-    <section className="flex flex-col gap-2">
-      <p className="px-1 text-sm text-[var(--muted)]">Activity</p>
-      {links.map((l) =>
-        isCampaign(l.direction) ? (
-          <CampaignRow key={l.id} link={l} />
-        ) : (
-          <div
-            key={l.id}
-            className="card flex items-center justify-between gap-3 !p-4"
-          >
-            <div className="min-w-0">
-              <p className="font-semibold">
-                {REASON_META[l.reason].emoji} {usd(l.amountUsd)}
-                <span className="ml-2 text-xs font-normal text-[var(--muted)]">
-                  {l.direction === "request" ? "request" : "sent"}
-                </span>
-              </p>
-              <p className="truncate text-xs text-[var(--muted)]">
-                {l.status === "pending" &&
-                  (l.direction === "request"
-                    ? "Waiting for payment"
-                    : "Waiting to be claimed")}
-                {l.status === "claiming" &&
-                  `${l.claimantEmail ?? short(l.claimantAddress)} is ${
-                    l.direction === "request" ? "paying" : "claiming"
-                  }`}
-                {l.status === "sending" && "Settling on Arbitrum…"}
-                {l.status === "paid" &&
-                  (l.direction === "request"
-                    ? "Received on Arbitrum ✓"
-                    : "Settled on Arbitrum ✓")}
-              </p>
-            </div>
-            {/* Only "send" links need the creator to approve a payout. */}
-            {l.direction === "send" && l.status === "claiming" && (
-              <button
-                className="btn btn-primary !px-4 !py-2"
-                disabled={payingId === l.id}
-                onClick={() => onPay(l)}
-              >
-                {payingId === l.id ? "Sending…" : `Send ${usd(l.amountUsd)}`}
-              </button>
-            )}
-            {l.status === "pending" && (
-              <Badge>{l.direction === "request" ? "Requested" : "Pending"}</Badge>
-            )}
-            {l.status === "sending" && <Badge>Sending…</Badge>}
-            {l.status === "paid" && <Badge tone="success">Paid</Badge>}
-          </div>
-        ),
+    <div id="activity" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "0 4px",
+        }}
+      >
+        <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, letterSpacing: "-.01em" }}>
+          Activity
+        </h3>
+      </div>
+
+      {!links.length ? (
+        <div className="card" style={{ textAlign: "center", color: "#79857c", fontSize: 14 }}>
+          Your sent links, requests and campaigns show up here.
+        </div>
+      ) : (
+        links.map((l) =>
+          isCampaign(l.direction) ? (
+            <CampaignRow key={l.id} link={l} />
+          ) : (
+            <ActivityRow key={l.id} link={l} payingId={payingId} onPay={onPay} />
+          ),
+        )
       )}
-    </section>
+    </div>
+  );
+}
+
+function ActivityRow({
+  link: l,
+  payingId,
+  onPay,
+}: {
+  link: BeamLink;
+  payingId: string | null;
+  onPay: (link: BeamLink) => void;
+}) {
+  const ic = ACT_ICON[l.direction];
+  const sub =
+    l.status === "pending"
+      ? l.direction === "request"
+        ? "Waiting for payment"
+        : "Waiting to be claimed"
+      : l.status === "claiming"
+        ? `${l.claimantEmail ?? short(l.claimantAddress)} is ${l.direction === "request" ? "paying" : "claiming"}`
+        : l.status === "sending"
+          ? "Settling on Arbitrum…"
+          : l.direction === "request"
+            ? "Received on Arbitrum"
+            : "Settled on Arbitrum";
+  const showPay = l.direction === "send" && l.status === "claiming";
+  return (
+    <div
+      style={{
+        background: "#fff",
+        border: "1px solid var(--line)",
+        borderRadius: 18,
+        padding: 15,
+        boxShadow: "0 1px 2px rgba(16,21,18,.04)",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <span
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: 12,
+            background: ic.bg,
+            color: ic.color,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+          }}
+        >
+          {ic.icon(20)}
+        </span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>
+            {usd(l.amountUsd)}
+            <span style={{ fontSize: 12, fontWeight: 500, color: "#9aa69d", marginLeft: 6 }}>
+              {l.direction === "request" ? "request" : "sent"}
+            </span>
+          </p>
+          <p
+            style={{
+              margin: "1px 0 0",
+              fontSize: 12,
+              color: "#79857c",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {sub}
+          </p>
+        </div>
+        {showPay ? (
+          <button
+            onClick={() => onPay(l)}
+            disabled={payingId === l.id}
+            style={{
+              background: "var(--ac)",
+              border: "none",
+              borderRadius: 11,
+              padding: "9px 14px",
+              fontSize: 13,
+              fontWeight: 700,
+              color: "#fff",
+              cursor: payingId === l.id ? "default" : "pointer",
+              whiteSpace: "nowrap",
+              opacity: payingId === l.id ? 0.6 : 1,
+            }}
+          >
+            {payingId === l.id ? "Sending…" : `Send ${usd(l.amountUsd)}`}
+          </button>
+        ) : (
+          <Badge tone={l.status === "paid" ? "success" : "muted"}>
+            {l.status === "paid"
+              ? "Paid"
+              : l.status === "sending"
+                ? "Sending"
+                : l.direction === "request"
+                  ? "Requested"
+                  : "Pending"}
+          </Badge>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -772,74 +1504,78 @@ function CampaignRow({ link }: { link: BeamLink }) {
   const isFund = link.direction === "fund";
   const pct = Math.min(100, target > 0 ? (collected / target) * 100 : 0);
   const heading = link.title || `${REASON_META[link.reason].emoji} ${usd(target)}`;
-  const tag = link.direction;
-
+  const ic = ACT_ICON[link.direction];
   return (
-    <div className="card flex flex-col gap-2 !p-4">
-      <div className="flex items-center justify-between gap-2">
-        <p className="min-w-0 truncate font-semibold">
-          {heading}
-          <span className="ml-2 text-xs font-normal text-[var(--muted)]">{tag}</span>
-        </p>
-        {link.status === "paid" ? (
-          <Badge tone="success">Funded</Badge>
-        ) : (
-          <Badge>
-            {n} {isProduct ? (n === 1 ? "sale" : "sales") : n === 1 ? "payer" : "payers"}
-          </Badge>
-        )}
+    <div
+      style={{
+        background: "#fff",
+        border: "1px solid var(--line)",
+        borderRadius: 18,
+        padding: 15,
+        boxShadow: "0 1px 2px rgba(16,21,18,.04)",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <span
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: 12,
+            background: ic.bg,
+            color: ic.color,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+          }}
+        >
+          {ic.icon(20)}
+        </span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p
+            style={{
+              margin: 0,
+              fontSize: 15,
+              fontWeight: 700,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {heading}
+            <span style={{ fontSize: 12, fontWeight: 500, color: "#9aa69d", marginLeft: 6 }}>
+              {link.direction}
+            </span>
+          </p>
+          <p style={{ margin: "1px 0 0", fontSize: 12, color: "#79857c" }}>
+            {isProduct
+              ? `${usd(target)} each · ${usd(collected)} earned`
+              : isFund
+                ? `${usd(collected)} raised of ${usd(target)}`
+                : `${usd(collected)} of ${usd(target)}`}
+          </p>
+        </div>
+        <Badge tone={link.status === "paid" ? "success" : "muted"}>
+          {link.status === "paid"
+            ? "Funded"
+            : `${n} ${isProduct ? (n === 1 ? "sale" : "sales") : n === 1 ? "payer" : "payers"}`}
+        </Badge>
       </div>
       {!isProduct && (
-        <div className="h-2 w-full overflow-hidden rounded-full bg-[var(--surface-2)]">
+        <div
+          style={{
+            height: 7,
+            borderRadius: 999,
+            background: "#eef1ed",
+            marginTop: 12,
+            overflow: "hidden",
+          }}
+        >
           <div
-            className="h-full rounded-full bg-[var(--success)] transition-all"
-            style={{ width: `${pct}%` }}
+            style={{ height: "100%", borderRadius: 999, background: "var(--ac)", width: `${pct}%` }}
           />
         </div>
       )}
-      <p className="text-xs text-[var(--muted)]">
-        {isProduct
-          ? `${usd(target)} each · ${usd(collected)} earned`
-          : isFund
-            ? `${usd(collected)} raised of ${usd(target)} goal`
-            : `${usd(collected)} of ${usd(target)} collected`}
-        {link.status === "paid" ? " · settled on Arbitrum ✓" : ""}
-      </p>
-    </div>
-  );
-}
-
-/** Shows where the unified balance actually lives — the UA magic, made visible. */
-function ChainBreakdown({
-  assets,
-}: {
-  assets?: {
-    chainAggregation: { token: { chainId: number }; amountInUSD: number }[];
-  }[];
-}) {
-  if (!assets?.length) return null;
-  const byChain = new Map<number, number>();
-  for (const a of assets) {
-    for (const c of a.chainAggregation) {
-      if (c.amountInUSD > 0)
-        byChain.set(
-          c.token.chainId,
-          (byChain.get(c.token.chainId) ?? 0) + c.amountInUSD,
-        );
-    }
-  }
-  const rows = [...byChain.entries()].sort((a, b) => b[1] - a[1]);
-  if (!rows.length) return null;
-  return (
-    <div className="mt-3 flex flex-wrap justify-center gap-1.5">
-      {rows.map(([id, amt]) => (
-        <span
-          key={id}
-          className="rounded-full border border-[var(--border)] bg-[var(--surface-2)] px-2.5 py-1 text-xs text-[var(--muted)]"
-        >
-          {chainName(id)} {usd(amt)}
-        </span>
-      ))}
     </div>
   );
 }
@@ -853,16 +1589,174 @@ function Badge({
 }) {
   return (
     <span
-      className="shrink-0 rounded-full px-3 py-1 text-xs font-semibold"
       style={{
-        background:
-          tone === "success"
-            ? "color-mix(in srgb, var(--success) 20%, transparent)"
-            : "var(--surface-2)",
-        color: tone === "success" ? "var(--success)" : "var(--muted)",
+        flexShrink: 0,
+        borderRadius: 999,
+        padding: "5px 11px",
+        fontSize: 12,
+        fontWeight: 700,
+        whiteSpace: "nowrap",
+        background: tone === "success" ? "var(--at)" : "#f2f5f1",
+        color: tone === "success" ? "var(--ap)" : "#5e6b62",
       }}
     >
       {children}
     </span>
   );
+}
+
+/* ───────────────────────────── Small shared bits ────────────────────────── */
+
+function BeamMark({ size, radius }: { size: number; radius: number }) {
+  return (
+    <div
+      style={{
+        width: size,
+        height: size,
+        borderRadius: radius,
+        background: "var(--ac)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        boxShadow: "0 8px 22px -8px var(--ash)",
+        color: "#fff",
+      }}
+    >
+      <BeamBolt size={size * 0.53} />
+    </div>
+  );
+}
+
+function Avatar({ initials, size }: { initials: string; size: number }) {
+  return (
+    <div
+      style={{
+        width: size,
+        height: size,
+        borderRadius: "50%",
+        background: "var(--ink)",
+        color: "#fff",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        fontWeight: 700,
+        fontSize: 14,
+      }}
+    >
+      {initials}
+    </div>
+  );
+}
+
+function Divider({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 12,
+        margin: "18px 0",
+        color: "#9aa69d",
+        fontSize: 12,
+        fontWeight: 600,
+      }}
+    >
+      <span style={{ height: 1, flex: 1, background: "var(--line)" }} />
+      {children}
+      <span style={{ height: 1, flex: 1, background: "var(--line)" }} />
+    </div>
+  );
+}
+
+function NavButton({
+  icon,
+  label,
+  active,
+  onClick,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  active?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button onClick={onClick} style={navStyle(active)}>
+      <span style={{ display: "flex", width: 20, height: 20, color: active ? "var(--ap)" : "#9aa69d" }}>
+        {icon}
+      </span>
+      {label}
+    </button>
+  );
+}
+
+function NavLink({ href, icon, label }: { href: string; icon: React.ReactNode; label: string }) {
+  return (
+    <Link href={href} style={{ ...navStyle(false), textDecoration: "none" }}>
+      <span style={{ display: "flex", width: 20, height: 20, color: "#9aa69d" }}>{icon}</span>
+      {label}
+    </Link>
+  );
+}
+
+function navStyle(active?: boolean): React.CSSProperties {
+  return {
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+    padding: "11px 12px",
+    borderRadius: 12,
+    border: "none",
+    cursor: "pointer",
+    fontSize: 14,
+    fontWeight: 600,
+    width: "100%",
+    textAlign: "left",
+    background: active ? "var(--at)" : "transparent",
+    color: active ? "var(--ink)" : "#79857c",
+    fontFamily: "inherit",
+  };
+}
+
+function TabButton({
+  icon,
+  label,
+  active,
+  onClick,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  active?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button onClick={onClick} style={tabStyle(active)}>
+      <span style={{ display: "flex", width: 22, height: 22 }}>{icon}</span>
+      <span style={{ fontSize: 10, fontWeight: 700 }}>{label}</span>
+    </button>
+  );
+}
+
+function TabLink({ href, icon, label }: { href: string; icon: React.ReactNode; label: string }) {
+  return (
+    <Link href={href} style={{ ...tabStyle(false), textDecoration: "none" }}>
+      <span style={{ display: "flex", width: 22, height: 22 }}>{icon}</span>
+      <span style={{ fontSize: 10, fontWeight: 700 }}>{label}</span>
+    </Link>
+  );
+}
+
+function tabStyle(active?: boolean): React.CSSProperties {
+  return {
+    background: "none",
+    border: "none",
+    cursor: "pointer",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: 3,
+    padding: "4px 10px",
+    flex: 1,
+    color: active ? "var(--ap)" : "#9aa69d",
+    fontFamily: "inherit",
+  };
 }
