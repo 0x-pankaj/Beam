@@ -18,6 +18,7 @@ The crypto is invisible. That's the whole point.
 
 - [The problem](#the-problem)
 - [How Beam works](#how-beam-works)
+- [Features](#features)
 - [The technology](#the-technology)
   - [Particle Universal Accounts (EIP-7702)](#1-particle-universal-accounts--eip-7702)
   - [Magic embedded wallet](#2-magic-embedded-wallet-walletless-onboarding)
@@ -59,6 +60,27 @@ The entire experience is one link and one tap:
 5. **Alice approves; the $50 moves cross-chain and settles as USDC on Arbitrum to Bob**, sourced automatically from her scattered balances.
 6. **Both sides update live** with a success animation and a settlement link.
 
+## Features
+
+Beam started as one-to-one send links and grew into a full chain-abstracted money app:
+
+| | Feature | What it does |
+| --- | --- | --- |
+| 💸 | **Send links** | Creator pays; the recipient claims **walletless** (Google/email). The core wedge — the recipient needs no wallet. |
+| 🙋 | **Request links** | The opener pays the creator. The inverse of send, same one-tap settle on Arbitrum. |
+| 🍕 | **Split / group pay** | One link, **many payers** from different chains. A live **progress bar** fills as each person pays their share; confetti when funded. |
+| @ | **Username pay-links** | Claim a permanent `/u/<name>` handle (like a Cash-App `$cashtag`) — a reusable "pay me" link, with QR. |
+| 📱 | **QR codes** | Every link/handle gets a scannable QR — share to a screen, claim on a phone. |
+| 🛰️ | **Cross-chain routing viz** | On every settle, an animation shows funds flowing **source chain(s) → Arbitrum**, derived from the real transaction. |
+| 🔎 | **On-chain proof** | Success screens link to the recipient's **USDC transfers on Arbiscan** plus the UniversalX activity. |
+| ⛽ | **$0-gas badge** | Surfaces UA gas abstraction when fees are waived. |
+| ✨ | **7702 onboarding moment** | A one-time "securing your account" overlay on first login that hides the EIP-7702 upgrade ("no wallet, no seed phrase"). |
+| 📊 | **Unified balance + per-chain breakdown** | One USD number, with chips showing where the money actually lives. |
+| 📲 | **Installable PWA** | Manifest + icon + theme color — "Add to Home Screen," feels native. |
+| ✉️ | **Email delivery (optional)** | Email a link straight to a recipient via Resend (gated; no-ops without a key). |
+
+Every flow settles on **Arbitrum** via Universal Accounts and onboards with **Magic** — the three sponsor technologies are load-bearing, not decorative.
+
 ## The technology
 
 Beam is built around three technologies, each doing something essential — not bolted on.
@@ -71,7 +93,9 @@ This is what makes the magic real:
 
 - **One USD balance** across Ethereum, Base, Arbitrum, and more — read with `getPrimaryAssets()` and rendered as a single number (the dashboard even shows the per-chain breakdown, so you can *see* the aggregation).
 - **Cross-chain settlement in a single call** — `createTransferTransaction()` targets USDC on Arbitrum, and the SDK sources and routes liquidity from wherever the sender actually holds funds. The account needs *nothing* on Arbitrum beforehand.
+- **Split pay leans on this hard** — N people, each holding different tokens on different chains, all settle to one address on Arbitrum through the same API.
 - **In-place EOA upgrade via 7702** — pending delegations are signed inline per user-operation and submitted with the transaction.
+- **Made visible** — each settle reads the real source chains and gas-waiver status (`freeGasFee`) from the transaction and animates the source → Arbitrum routing, so the abstraction is something you can watch.
 
 The EIP-7702 signing/authorization logic lives in [`src/providers/UniversalAccountProvider.tsx`](src/providers/UniversalAccountProvider.tsx).
 
@@ -94,33 +118,42 @@ Every claim lands as **native USDC on Arbitrum One** (`0xaf88d065e77c8cC2239327C
 A single Next.js (App Router) application — UI, API, and chain logic in one deployable.
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                     Next.js App (Vercel)                      │
-│                                                               │
-│  Browser (client)                    Server (route handlers)  │
-│  ┌───────────────────────┐           ┌──────────────────────┐ │
-│  │ MagicProvider         │           │ /api/links  (CRUD)   │ │
-│  │  • Google / email login│          │ /api/links/[id]/...  │ │
-│  │  • EIP-7702 signer     │          │   claim · sending ·  │ │
-│  │                        │          │   paid               │ │
-│  │ UniversalAccountProvider│         │ /api/health          │ │
-│  │  • UA init (7702 mode) │          └──────────┬───────────┘ │
-│  │  • unified balance     │                     │             │
-│  │  • cross-chain transfer│          ┌──────────▼───────────┐ │
-│  └───────────┬───────────┘           │ Link store           │ │
-│              │                        │  Upstash/KV ⇄ memory │ │
-│  Dashboard ─ Create link ─ Claim     └──────────────────────┘ │
-└──────────────┼────────────────────────────────────────────────┘
-               │
-     ┌─────────▼──────────┐        ┌──────────────────────┐
-     │ Magic (signer +    │        │ Particle Universal   │
-     │ walletless login)  │───────▶│ Accounts (7702)      │───▶ Arbitrum (USDC)
-     └────────────────────┘        └──────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│                      Next.js App (Vercel)                      │
+│                                                                │
+│  Browser (client)                     Server (route handlers)  │
+│  ┌────────────────────────┐           ┌─────────────────────┐  │
+│  │ MagicProvider          │           │ /api/links (CRUD)   │  │
+│  │  • Google / email login│           │ /api/links/[id]/    │  │
+│  │  • EIP-7702 signer      │          │   claim·sending·    │  │
+│  │ UniversalAccountProvider│          │   paid·contribute   │  │
+│  │  • UA init (7702 mode)  │          │ /api/username       │  │
+│  │  • unified balance      │          │ /api/notify·health  │  │
+│  │  • cross-chain transfer │          └──────────┬──────────┘  │
+│  └────────────┬───────────┘                      │             │
+│   Dashboard · Create (send/request/split)  ┌─────▼──────────┐  │
+│   Claim /claim/[id] · Handle /u/[username] │ Link + handle  │  │
+│                                            │ store          │  │
+│                                            │ Upstash/KV ⇄   │  │
+│                                            │ memory         │  │
+│                                            └────────────────┘  │
+└───────────────┬────────────────────────────────────────────────┘
+                │
+      ┌─────────▼──────────┐        ┌──────────────────────┐
+      │ Magic (signer +    │        │ Particle Universal   │
+      │ walletless login)  │───────▶│ Accounts (7702)      │───▶ Arbitrum (USDC)
+      └────────────────────┘        └──────────────────────┘
 ```
 
 ## The payment-link lifecycle
 
-A link is **money the sender controls**: the sender funds it and approves the release, so funds move only on their action — the recipient just claims. Status transitions are coordinated through the link store so the two parties' screens stay in sync in real time.
+Every link carries a **direction**:
+
+- **send** — the creator funds and approves; the recipient claims walletless (shown below).
+- **request** — the opener pays the creator on a tap.
+- **split** — many openers each pay a share via `/contribute`; the link flips to `paid` once the total fills.
+
+For a **send** link, funds move only on the sender's action — the recipient just claims. Status transitions are coordinated through the link store so the two parties' screens stay in sync in real time.
 
 ```
 Sender (Alice)                      Link store                    Recipient (Bob)
@@ -162,29 +195,38 @@ Polling (3–4s) on both screens keeps the demo's two windows in lockstep.
 ```
 src/
 ├── app/
-│   ├── page.tsx                 # Landing (logged-out) + Dashboard (logged-in)
+│   ├── page.tsx                 # Landing + Dashboard (send/request/split, @handle)
 │   ├── claim/[id]/
 │   │   ├── page.tsx             # Server component — Open Graph link previews
-│   │   └── ClaimClient.tsx      # Walletless claim UI
+│   │   └── ClaimClient.tsx      # Walletless claim / pay / split UI
+│   ├── u/[username]/
+│   │   ├── page.tsx             # @handle pay page (server + OG)
+│   │   └── UserPayClient.tsx    # Pay a username, settle on Arbitrum
 │   ├── api/
 │   │   ├── links/route.ts       # POST create · GET list-by-sender
 │   │   ├── links/[id]/route.ts  # GET one
 │   │   ├── links/[id]/claim/    # POST recipient announces claim
 │   │   ├── links/[id]/sending/  # POST sender approved, settling
 │   │   ├── links/[id]/paid/     # POST settled (txId)
+│   │   ├── links/[id]/contribute/  # POST a split share
+│   │   ├── username/route.ts    # GET resolve/availability · POST claim handle
+│   │   ├── notify/route.ts      # POST email a link (Resend, optional)
 │   │   └── health/route.ts      # Store + config diagnostics
+│   ├── manifest.ts              # PWA manifest
 │   ├── providers.tsx            # Wraps the app in both providers
 │   └── globals.css              # Design tokens + animations
 ├── providers/
 │   ├── MagicProvider.tsx        # Login (Google/email) + EOA signer
-│   └── UniversalAccountProvider.tsx  # UA init, balance, 7702, transfer
+│   └── UniversalAccountProvider.tsx  # UA init, balance, 7702, transfer + settle result
 ├── lib/
-│   ├── chains.ts                # Chain IDs, USDC addresses, settlement target
-│   ├── links.ts                 # Link types + dual-backend store
+│   ├── chains.ts                # Chain IDs, USDC, settlement target, explorer links
+│   ├── links.ts                 # Link/contribution/handle types + dual-backend store
 │   ├── gsi.ts                   # Google One-Tap helper
 │   └── format.ts                # Display helpers
-├── components/GoogleGlyph.tsx
-└── types/particle-ua.d.ts       # Ambient types for the UA SDK
+├── components/
+│   ├── GoogleGlyph.tsx · Qr.tsx · SettleAnimation.tsx · OnboardingOverlay.tsx
+├── types/particle-ua.d.ts       # Ambient types for the UA SDK
+└── public/icon.svg              # App icon (PWA + favicon)
 ```
 
 ## Run it locally
@@ -216,7 +258,8 @@ Copy `.env.example` → `.env.local` and fill in:
 | `NEXT_PUBLIC_PARTICLE_APP_ID` | Particle dashboard → create a **Web** app |
 | `NEXT_PUBLIC_MAGIC_API_KEY` | [Magic dashboard](https://dashboard.magic.link/) → Publishable API key (`pk_live_…`) |
 | `NEXT_PUBLIC_GOOGLE_CLIENT_ID` | Google Cloud → OAuth client (must match the ID in Magic's Google config). *Optional* — app falls back to email-only when unset. |
-| `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` | Upstash (or Vercel KV's `KV_REST_API_URL` / `KV_REST_API_TOKEN`). *Optional locally* — falls back to in-memory. |
+| `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` | Upstash (or Vercel KV's `KV_REST_API_URL` / `KV_REST_API_TOKEN`). *Optional locally* — falls back to in-memory. Required in production. |
+| `RESEND_API_KEY` / `RESEND_FROM` | [Resend](https://resend.com) — *optional*, enables the "email it to them" field. The app works without it. |
 
 > **Note:** Universal Accounts cross-chain liquidity is **mainnet-only**, so transfers move real USDC. Keep demo amounts small.
 
@@ -249,13 +292,18 @@ Real things discovered building on bleeding-edge SDKs:
 - No secrets are committed. `.env*` is gitignored; only public (`NEXT_PUBLIC_*`) values reach the client bundle, by design.
 - Upstash/KV credentials are server-side only and live in deployment env vars.
 - Universal Accounts have no private keys — ownership is delegated to the Magic-managed signer; the user authorizes each transaction.
-- Payment links are requests: funds never move without the sender's explicit approval.
+- Funds never move without an explicit action: a **send** link requires the creator's approval; **request**/**split** payments are signed by the payer.
 
 ## Limitations & roadmap
 
 - **Demo settlement uses real mainnet USDC** (UA has no testnets) — amounts are intentionally tiny.
-- Link store is keyed for a demo footprint; production would add auth on the sender/claim endpoints and expiry.
-- Roadmap: sender-side auto-approve option, ENS/social-handle display for recipients, gas-sponsored claims where UA allows, and "type what you want to pay" natural-language entry.
+- The link/handle store is sized for a demo footprint; production would add auth on the mutating endpoints, rate limits, and link expiry.
+- The "Arbitrum proof" links to the recipient's USDC transfers (the SDK returns a `transactionId`, not a destination tx hash) — a per-tx Arbiscan deep-link would be tighter if the SDK exposes it.
+- Roadmap: "top up from any wallet" (use existing MetaMask funds to fund the Beam account), gas-sponsored claims where UA allows, recurring/scheduled links, and "type what you want to pay" natural-language entry.
+
+### Shipped highlights
+
+Send · request · **split/group** pay · **@username** handles · QR · cross-chain **routing visualization** · Arbiscan proof · $0-gas badge · EIP-7702 **onboarding moment** · installable **PWA** · optional email delivery.
 
 ---
 
