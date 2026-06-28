@@ -81,12 +81,20 @@ const DIRECTIONS: Direction[] = ["send", "request", "split"];
 const normalizeDirection = (d: unknown): Direction =>
   DIRECTIONS.includes(d as Direction) ? (d as Direction) : "send";
 
+/** Reusable "@handle" — a permanent pay-me link at /u/<name>. */
+export const USERNAME_RE = /^[a-z0-9_]{3,20}$/;
+export const normUsername = (n: string) => n.trim().toLowerCase();
+export type ClaimResult = { ok: boolean; error?: string; username?: string };
+
 interface LinkStore {
   create(input: CreateInput): Promise<BeamLink>;
   get(id: string): Promise<BeamLink | null>;
   listBySender(senderAddress: string): Promise<BeamLink[]>;
   update(id: string, patch: Partial<BeamLink>): Promise<BeamLink | null>;
   addContribution(id: string, c: Contribution): Promise<BeamLink | null>;
+  claimUsername(address: string, name: string): Promise<ClaimResult>;
+  usernameToAddress(name: string): Promise<string | null>;
+  addressToUsername(address: string): Promise<string | null>;
 }
 
 function genId(): string {
@@ -132,6 +140,8 @@ function applyContribution(link: BeamLink, c: Contribution): BeamLink {
 
 class MemoryStore implements LinkStore {
   private map = new Map<string, BeamLink>();
+  private unameToAddr = new Map<string, string>();
+  private addrToUname = new Map<string, string>();
 
   async create(input: CreateInput) {
     const link = buildLink(input);
@@ -161,6 +171,25 @@ class MemoryStore implements LinkStore {
     this.map.set(id, next);
     return next;
   }
+  async claimUsername(address: string, name: string) {
+    const n = normUsername(name);
+    if (!USERNAME_RE.test(n))
+      return { ok: false, error: "3–20 chars: a–z, 0–9, _" };
+    const owner = this.unameToAddr.get(n);
+    if (owner && owner.toLowerCase() !== address.toLowerCase())
+      return { ok: false, error: "That handle is taken" };
+    const prev = this.addrToUname.get(address.toLowerCase());
+    if (prev && prev !== n) this.unameToAddr.delete(prev);
+    this.unameToAddr.set(n, address);
+    this.addrToUname.set(address.toLowerCase(), n);
+    return { ok: true, username: n };
+  }
+  async usernameToAddress(name: string) {
+    return this.unameToAddr.get(normUsername(name)) ?? null;
+  }
+  async addressToUsername(address: string) {
+    return this.addrToUname.get(address.toLowerCase()) ?? null;
+  }
 }
 
 /* ───────────────────────────── Redis (Vercel KV / Upstash) ───────────────── */
@@ -180,6 +209,8 @@ class RedisStore implements LinkStore {
 
   private linkKey = (id: string) => `beam:link:${id}`;
   private senderKey = (addr: string) => `beam:sender:${addr.toLowerCase()}`;
+  private unameKey = (n: string) => `beam:uname:${n}`;
+  private addrNameKey = (addr: string) => `beam:addrname:${addr.toLowerCase()}`;
 
   private async cmd<T = unknown>(command: (string | number)[]): Promise<T> {
     const res = await fetch(this.url, {
@@ -246,6 +277,28 @@ class RedisStore implements LinkStore {
     await this.cmd(["SET", this.linkKey(id), JSON.stringify(next)]);
     return next;
   }
+  async claimUsername(address: string, name: string) {
+    const n = normUsername(name);
+    if (!USERNAME_RE.test(n))
+      return { ok: false, error: "3–20 chars: a–z, 0–9, _" };
+    const owner = await this.cmd<string | null>(["GET", this.unameKey(n)]);
+    if (owner && owner.toLowerCase() !== address.toLowerCase())
+      return { ok: false, error: "That handle is taken" };
+    const prev = await this.cmd<string | null>([
+      "GET",
+      this.addrNameKey(address),
+    ]);
+    if (prev && prev !== n) await this.cmd(["DEL", this.unameKey(prev)]);
+    await this.cmd(["SET", this.unameKey(n), address]);
+    await this.cmd(["SET", this.addrNameKey(address), n]);
+    return { ok: true, username: n };
+  }
+  async usernameToAddress(name: string) {
+    return this.cmd<string | null>(["GET", this.unameKey(normUsername(name))]);
+  }
+  async addressToUsername(address: string) {
+    return this.cmd<string | null>(["GET", this.addrNameKey(address)]);
+  }
 }
 
 /* ───────────────────────────── Selection ────────────────────────────────── */
@@ -268,6 +321,12 @@ export const updateLink = (id: string, patch: Partial<BeamLink>) =>
   getStore().update(id, patch);
 export const addContribution = (id: string, c: Contribution) =>
   getStore().addContribution(id, c);
+export const claimUsername = (address: string, name: string) =>
+  getStore().claimUsername(address, name);
+export const usernameToAddress = (name: string) =>
+  getStore().usernameToAddress(name);
+export const addressToUsername = (address: string) =>
+  getStore().addressToUsername(address);
 
 /** True when a persistent backend is configured (for diagnostics). */
 export const isPersistent = () => redisConfig() !== null;

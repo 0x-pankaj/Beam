@@ -249,6 +249,8 @@ function Dashboard() {
         onCreated={loadLinks}
       />
 
+      <HandleCard address={address!} />
+
       {toast && (
         <div className="card animate-pop border-[var(--success)] text-center text-sm text-[var(--success)]">
           {toast}
@@ -263,6 +265,94 @@ function Dashboard() {
 
       <Activity links={links} payingId={payingId} onPay={pay} />
     </>
+  );
+}
+
+/* ───────────────────────────── @handle card ─────────────────────────────── */
+
+function HandleCard({ address }: { address: string }) {
+  const [name, setName] = useState<string | null>(null);
+  const [input, setInput] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    fetch(`/api/username?address=${address}`)
+      .then((r) => r.json())
+      .then((d) => setName(d.name ?? null))
+      .catch(() => {});
+  }, [address]);
+
+  const claim = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/username", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ address, name: input }),
+      });
+      const d = await res.json();
+      if (d.ok) setName(d.username);
+      else setError(d.error ?? "Couldn't claim that handle");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const url =
+    name && typeof window !== "undefined"
+      ? `${window.location.origin}/u/${name}`
+      : "";
+
+  if (name) {
+    return (
+      <div className="card flex flex-col gap-3">
+        <p className="text-sm text-[var(--muted)]">Your pay-me link</p>
+        <p className="text-xl font-bold">@{name}</p>
+        <Qr url={url} />
+        <button
+          className="btn btn-ghost"
+          onClick={() => {
+            navigator.clipboard.writeText(url);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1500);
+          }}
+        >
+          {copied ? "Copied ✓" : `Copy ${url.replace(/^https?:\/\//, "")}`}
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="card flex flex-col gap-3">
+      <p className="text-sm text-[var(--muted)]">
+        Claim your @handle — a permanent link anyone can pay you at
+      </p>
+      <div className="flex items-center gap-2">
+        <span className="text-xl font-bold text-[var(--muted)]">@</span>
+        <input
+          className="input"
+          placeholder="yourname"
+          value={input}
+          maxLength={20}
+          onChange={(e) =>
+            setInput(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))
+          }
+          onKeyDown={(e) => e.key === "Enter" && input && claim()}
+        />
+      </div>
+      <button
+        className="btn btn-primary"
+        disabled={input.length < 3 || busy}
+        onClick={claim}
+      >
+        {busy ? "Claiming…" : "Claim handle"}
+      </button>
+      {error && <p className="text-xs text-[var(--danger)]">{error}</p>}
+    </div>
   );
 }
 
