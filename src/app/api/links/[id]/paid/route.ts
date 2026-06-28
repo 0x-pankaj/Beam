@@ -1,5 +1,7 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getLink, updateLink } from "@/lib/links";
+import { NextRequest, NextResponse, after } from "next/server";
+import { getLink, updateLink, REASON_META } from "@/lib/links";
+import { notifyCreatorPaid } from "@/lib/email";
+import { short } from "@/lib/format";
 
 // The sender reports the settled UA transaction, marking the link paid.
 export async function POST(
@@ -19,5 +21,18 @@ export async function POST(
     txId: String(txId),
     paidAt: Date.now(),
   });
+
+  // For a request link, the opener just paid the creator — notify the creator.
+  if (link.direction === "request") {
+    after(() =>
+      notifyCreatorPaid({
+        to: link.senderName,
+        amountUsd: link.amountUsd,
+        what: link.note || REASON_META[link.reason].label,
+        fromLabel: link.claimantEmail || short(link.claimantAddress),
+      }),
+    );
+  }
+
   return NextResponse.json(next);
 }

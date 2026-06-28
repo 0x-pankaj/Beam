@@ -1,15 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
+import { sendEmail } from "@/lib/email";
 
 // Optionally email a payment link to its recipient via Resend.
-// No-ops cleanly (sent:false) when RESEND_API_KEY isn't configured, so the
-// app works without it.
+// No-ops cleanly when RESEND_API_KEY isn't configured, so the app works without it.
 export async function POST(req: NextRequest) {
-  const key = process.env.RESEND_API_KEY;
   const body = await req.json().catch(() => null);
   const { to, url, amountUsd, fromName, direction } = body ?? {};
   if (!to || !url)
     return NextResponse.json({ error: "to and url required" }, { status: 400 });
-  if (!key) return NextResponse.json({ sent: false, reason: "not configured" });
 
   const who = fromName || "Someone";
   const amount = amountUsd ? `$${Number(amountUsd).toLocaleString()}` : "money";
@@ -25,22 +23,6 @@ export async function POST(req: NextRequest) {
       <p style="color:#888;font-size:12px">${url}</p>
     </div>`;
 
-  try {
-    const res = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${key}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from: process.env.RESEND_FROM || "Beam <onboarding@resend.dev>",
-        to: [String(to)],
-        subject,
-        html,
-      }),
-    });
-    return NextResponse.json({ sent: res.ok });
-  } catch {
-    return NextResponse.json({ sent: false, reason: "send failed" });
-  }
+  const sent = await sendEmail({ to: String(to), subject, html });
+  return NextResponse.json({ sent });
 }

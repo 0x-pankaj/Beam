@@ -1,5 +1,13 @@
-import { NextRequest, NextResponse } from "next/server";
-import { addContribution, getLink, isCampaign, publicLink } from "@/lib/links";
+import { NextRequest, NextResponse, after } from "next/server";
+import {
+  addContribution,
+  getLink,
+  isCampaign,
+  publicLink,
+  REASON_META,
+} from "@/lib/links";
+import { notifyCreatorPaid } from "@/lib/email";
+import { short } from "@/lib/format";
 
 // A payer contributes toward a campaign (split / fund / product), settled on
 // Arbitrum. For products, the unlock content is returned to the buyer who paid.
@@ -25,6 +33,16 @@ export async function POST(
     txId: String(txId),
     at: Date.now(),
   });
+
+  // Notify the creator that they got paid (no-ops without Resend).
+  after(() =>
+    notifyCreatorPaid({
+      to: link.senderName,
+      amountUsd: String(amountUsd),
+      what: link.title || REASON_META[link.reason].label,
+      fromLabel: email ? String(email) : short(String(address)),
+    }),
+  );
 
   return NextResponse.json({
     link: next ? publicLink(next) : null,
