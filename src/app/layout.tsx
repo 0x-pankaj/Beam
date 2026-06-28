@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
@@ -17,6 +17,12 @@ export const metadata: Metadata = {
   title: "Beam — send money by link, any chain",
   description:
     "Send money by link. Any chain. They claim it with Google. Settles on Arbitrum.",
+  icons: { icon: "/icon.svg", apple: "/icon.svg" },
+  appleWebApp: { capable: true, title: "Beam", statusBarStyle: "black-translucent" },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#07070b",
 };
 
 export default function RootLayout({

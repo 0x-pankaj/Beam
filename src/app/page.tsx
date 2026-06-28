@@ -18,6 +18,7 @@ import { chainName } from "@/lib/chains";
 import { GoogleGlyph } from "@/components/GoogleGlyph";
 import { Qr } from "@/components/Qr";
 import { SettleAnimation } from "@/components/SettleAnimation";
+import { OnboardingOverlay } from "@/components/OnboardingOverlay";
 
 const PRESETS: Reason[] = ["rent", "split", "gift", "tip"];
 
@@ -202,6 +203,7 @@ function Dashboard() {
 
   return (
     <>
+      <OnboardingOverlay active={loading} />
       <header className="flex items-center justify-between">
         <span className="text-2xl font-black tracking-tight">Beam</span>
         <div className="flex items-center gap-2">
@@ -372,6 +374,7 @@ function LinkForm({
   const [ways, setWays] = useState("");
   const [reason, setReason] = useState<Reason>("none");
   const [note, setNote] = useState("");
+  const [recipientEmail, setRecipientEmail] = useState("");
   const [busy, setBusy] = useState(false);
   const [created, setCreated] = useState<BeamLink | null>(null);
   const [copied, setCopied] = useState(false);
@@ -393,8 +396,23 @@ function LinkForm({
         }),
       });
       if (res.ok) {
-        setCreated(await res.json());
+        const link: BeamLink = await res.json();
+        setCreated(link);
         onCreated();
+        // Optionally email the link to the recipient (no-ops without Resend).
+        if (recipientEmail) {
+          fetch("/api/notify", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              to: recipientEmail,
+              url: claimUrl(link.id),
+              amountUsd: link.amountUsd,
+              fromName: senderName,
+              direction: link.direction,
+            }),
+          }).catch(() => {});
+        }
       }
     } finally {
       setBusy(false);
@@ -407,6 +425,7 @@ function LinkForm({
     setWays("");
     setReason("none");
     setNote("");
+    setRecipientEmail("");
     setCopied(false);
   };
 
@@ -545,6 +564,16 @@ function LinkForm({
         maxLength={140}
         onChange={(e) => setNote(e.target.value)}
       />
+      {mode !== "split" && (
+        <input
+          className="input"
+          type="email"
+          inputMode="email"
+          placeholder="Email it to them (optional)"
+          value={recipientEmail}
+          onChange={(e) => setRecipientEmail(e.target.value)}
+        />
+      )}
       <button
         className="btn btn-primary"
         disabled={!amount || Number(amount) <= 0 || busy}
