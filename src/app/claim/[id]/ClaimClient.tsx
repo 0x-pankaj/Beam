@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useMagic } from "@/providers/MagicProvider";
 import { useUniversalAccount } from "@/providers/UniversalAccountProvider";
-import { REASON_META, type BeamLink } from "@/lib/links";
+import { collectedUsd, REASON_META, type BeamLink } from "@/lib/links";
 import { usd } from "@/lib/format";
 import { universalxActivity } from "@/lib/chains";
 import { GoogleGlyph } from "@/components/GoogleGlyph";
@@ -23,6 +23,7 @@ export default function ClaimClient({ id }: { id: string }) {
   const [notFound, setNotFound] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [shareInput, setShareInput] = useState("");
   const announced = useRef(false);
 
   const load = useCallback(async () => {
@@ -95,6 +96,20 @@ export default function ClaimClient({ id }: { id: string }) {
       }
     });
 
+  // SPLIT links: the opener pays a share to the creator; many can chip in.
+  const payShare = (amountUsd: string) =>
+    run(async () => {
+      if (!link || !address) return;
+      const res = await sendUsdcToArbitrum(amountUsd, link.senderAddress);
+      await fetch(`/api/links/${id}/contribute`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ address, email, amountUsd, txId: res.transactionId }),
+      });
+      setShareInput("");
+      await load();
+    });
+
   if (notFound)
     return (
       <main className="beam-shell items-center justify-center text-center">
@@ -114,22 +129,35 @@ export default function ClaimClient({ id }: { id: string }) {
   const meta = REASON_META[link.reason];
   const from = link.senderName ?? "Someone";
   const isRequest = link.direction === "request";
+  const isSplit = link.direction === "split";
+  const total = Number(link.amountUsd);
+  const collected = collectedUsd(link);
+  const remaining = Math.max(0, total - collected);
+  const suggestedShare = link.splitWays
+    ? Math.min(remaining || total / link.splitWays, total / link.splitWays)
+    : remaining || total;
 
   // ── Settled.
   if (link.status === "paid") {
     return (
       <main className="beam-shell items-center justify-center text-center">
         <Confetti />
-        <div className="animate-pop text-6xl">{isRequest ? "✅" : "🎉"}</div>
+        <div className="animate-pop text-6xl">
+          {isRequest ? "✅" : isSplit ? "🥳" : "🎉"}
+        </div>
         <h1 className="animate-pop text-3xl font-black">
           {isRequest
             ? `You paid ${usd(link.amountUsd)}`
-            : `${usd(link.amountUsd)} received`}
+            : isSplit
+              ? "Fully funded!"
+              : `${usd(link.amountUsd)} received`}
         </h1>
         <p className="text-[var(--muted)]">
           {isRequest
             ? `Sent to ${from} — settled on Arbitrum.`
-            : "Settled on Arbitrum — it's yours."}
+            : isSplit
+              ? `${usd(total)} collected from ${link.contributions?.length ?? 0} people — settled to ${from} on Arbitrum.`
+              : "Settled on Arbitrum — it's yours."}
         </p>
         {link.txId && (
           <a
@@ -150,7 +178,8 @@ export default function ClaimClient({ id }: { id: string }) {
       <div className="card w-full text-center">
         <div className="text-5xl">{meta.emoji}</div>
         <p className="mt-3 text-sm text-[var(--muted)]">
-          {from} is {isRequest ? "requesting" : "sending you"}
+          {from} is{" "}
+          {isRequest ? "requesting" : isSplit ? "collecting" : "sending you"}
         </p>
         <p className="my-1 text-5xl font-black tracking-tight">
           {usd(link.amountUsd)}
@@ -161,16 +190,63 @@ export default function ClaimClient({ id }: { id: string }) {
           <p className="text-[var(--muted)]">{meta.label}</p>
         )}
 
+        {isSplit && (
+          <div className="mt-4">
+            <div className="h-2 w-full overflow-hidden rounded-full bg-[var(--surface-2)]">
+              <div
+                className="h-full rounded-full bg-[var(--success)] transition-all"
+                style={{
+                  width: `${Math.min(100, total > 0 ? (collected / total) * 100 : 0)}%`,
+                }}
+              />
+            </div>
+            <p className="mt-1 text-xs text-[var(--muted)]">
+              {usd(collected)} of {usd(total)} ·{" "}
+              {link.contributions?.length ?? 0} paid
+            </p>
+          </div>
+        )}
+
         <div className="mt-6">
           {!isLoggedIn ? (
             <ClaimLogin
               busy={busy}
               disabled={!magic}
               googleEnabled={googleEnabled}
-              cta={isRequest ? "Pay" : "Claim"}
+              cta={isRequest || isSplit ? "Pay" : "Claim"}
               onSignIn={signIn}
               onGoogle={signInGoogle}
             />
+          ) : isSplit ? (
+            // Opener pays their share toward the split.
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <span className="text-xl font-bold text-[var(--muted)]">$</span>
+                <input
+                  className="input text-xl font-bold"
+                  inputMode="decimal"
+                  placeholder={suggestedShare.toFixed(2)}
+                  value={shareInput}
+                  onChange={(e) =>
+                    setShareInput(e.target.value.replace(/[^0-9.]/g, ""))
+                  }
+                />
+              </div>
+              <button
+                className="btn btn-primary"
+                disabled={busy}
+                onClick={() =>
+                  payShare(shareInput || suggestedShare.toFixed(2))
+                }
+              >
+                {busy
+                  ? "Settling on Arbitrum…"
+                  : `Pay ${usd(shareInput || suggestedShare)}`}
+              </button>
+              <p className="text-xs text-[var(--muted)]">
+                Your balance: {usd(totalUsd)} · settles to {from} on Arbitrum
+              </p>
+            </div>
           ) : isRequest ? (
             // Opener pays the request.
             <div className="flex flex-col gap-2">

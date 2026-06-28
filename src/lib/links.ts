@@ -16,8 +16,21 @@
 
 export type Reason = "rent" | "split" | "gift" | "tip" | "none";
 export type LinkStatus = "pending" | "claiming" | "sending" | "paid";
-/** "send" = creator pays the opener (walletless claim). "request" = opener pays the creator. */
-export type Direction = "send" | "request";
+/**
+ * "send"    = creator pays the opener (walletless claim).
+ * "request" = the opener pays the creator.
+ * "split"   = many openers each pay a share to the creator until the total fills.
+ */
+export type Direction = "send" | "request" | "split";
+
+/** One payment toward a split link. */
+export type Contribution = {
+  address: string;
+  email?: string;
+  amountUsd: string;
+  txId: string;
+  at: number;
+};
 
 export type BeamLink = {
   id: string;
@@ -25,7 +38,7 @@ export type BeamLink = {
   amountUsd: string;
   reason: Reason;
   note?: string;
-  /** The link's creator. For "send" they pay; for "request" they receive. */
+  /** The link's creator. For "send" they pay; for "request"/"split" they receive. */
   senderAddress: string;
   senderName?: string;
   status: LinkStatus;
@@ -33,9 +46,17 @@ export type BeamLink = {
   claimantAddress?: string;
   claimantEmail?: string;
   txId?: string;
+  /** Split only: suggested number of payers (share = amountUsd / splitWays). */
+  splitWays?: number;
+  /** Split only: payments collected so far. */
+  contributions?: Contribution[];
   createdAt: number;
   paidAt?: number;
 };
+
+/** Total collected for a split link. */
+export const collectedUsd = (link: BeamLink): number =>
+  (link.contributions ?? []).reduce((s, c) => s + Number(c.amountUsd), 0);
 
 export const REASON_META: Record<Reason, { label: string; emoji: string }> = {
   rent: { label: "Rent", emoji: "🏠" },
@@ -47,14 +68,25 @@ export const REASON_META: Record<Reason, { label: string; emoji: string }> = {
 
 export type CreateInput = Pick<
   BeamLink,
-  "direction" | "amountUsd" | "reason" | "note" | "senderAddress" | "senderName"
+  | "direction"
+  | "amountUsd"
+  | "reason"
+  | "note"
+  | "senderAddress"
+  | "senderName"
+  | "splitWays"
 >;
+
+const DIRECTIONS: Direction[] = ["send", "request", "split"];
+const normalizeDirection = (d: unknown): Direction =>
+  DIRECTIONS.includes(d as Direction) ? (d as Direction) : "send";
 
 interface LinkStore {
   create(input: CreateInput): Promise<BeamLink>;
   get(id: string): Promise<BeamLink | null>;
   listBySender(senderAddress: string): Promise<BeamLink[]>;
   update(id: string, patch: Partial<BeamLink>): Promise<BeamLink | null>;
+  addContribution(id: string, c: Contribution): Promise<BeamLink | null>;
 }
 
 function genId(): string {
@@ -66,16 +98,33 @@ function genId(): string {
 }
 
 function buildLink(input: CreateInput): BeamLink {
+  const direction = normalizeDirection(input.direction);
   return {
     id: genId(),
-    direction: input.direction === "request" ? "request" : "send",
+    direction,
     amountUsd: input.amountUsd,
     reason: input.reason,
     note: input.note,
     senderAddress: input.senderAddress,
     senderName: input.senderName,
     status: "pending",
+    ...(direction === "split"
+      ? { splitWays: input.splitWays, contributions: [] }
+      : {}),
     createdAt: Date.now(),
+  };
+}
+
+/** Append a contribution to a split link and mark it paid once the total fills. */
+function applyContribution(link: BeamLink, c: Contribution): BeamLink {
+  const contributions = [...(link.contributions ?? []), c];
+  const collected = contributions.reduce((s, x) => s + Number(x.amountUsd), 0);
+  const filled = collected + 1e-9 >= Number(link.amountUsd);
+  return {
+    ...link,
+    contributions,
+    status: filled ? "paid" : link.status,
+    paidAt: filled ? Date.now() : link.paidAt,
   };
 }
 
@@ -102,6 +151,13 @@ class MemoryStore implements LinkStore {
     const link = this.map.get(id);
     if (!link) return null;
     const next = { ...link, ...patch };
+    this.map.set(id, next);
+    return next;
+  }
+  async addContribution(id: string, c: Contribution) {
+    const link = this.map.get(id);
+    if (!link) return null;
+    const next = applyContribution(link, c);
     this.map.set(id, next);
     return next;
   }
@@ -183,6 +239,13 @@ class RedisStore implements LinkStore {
     await this.cmd(["SET", this.linkKey(id), JSON.stringify(next)]);
     return next;
   }
+  async addContribution(id: string, c: Contribution) {
+    const link = await this.get(id);
+    if (!link) return null;
+    const next = applyContribution(link, c);
+    await this.cmd(["SET", this.linkKey(id), JSON.stringify(next)]);
+    return next;
+  }
 }
 
 /* ───────────────────────────── Selection ────────────────────────────────── */
@@ -203,6 +266,8 @@ export const listLinksBySender = (addr: string) =>
   getStore().listBySender(addr);
 export const updateLink = (id: string, patch: Partial<BeamLink>) =>
   getStore().update(id, patch);
+export const addContribution = (id: string, c: Contribution) =>
+  getStore().addContribution(id, c);
 
 /** True when a persistent backend is configured (for diagnostics). */
 export const isPersistent = () => redisConfig() !== null;

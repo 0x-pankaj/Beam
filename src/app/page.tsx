@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useMagic } from "@/providers/MagicProvider";
 import { useUniversalAccount } from "@/providers/UniversalAccountProvider";
 import {
+  collectedUsd,
   REASON_META,
   type BeamLink,
   type Direction,
@@ -12,6 +13,7 @@ import {
 import { claimUrl, short, usd } from "@/lib/format";
 import { chainName } from "@/lib/chains";
 import { GoogleGlyph } from "@/components/GoogleGlyph";
+import { Qr } from "@/components/Qr";
 
 const PRESETS: Reason[] = ["rent", "split", "gift", "tip"];
 
@@ -264,6 +266,7 @@ function LinkForm({
 }) {
   const [mode, setMode] = useState<Direction>("send");
   const [amount, setAmount] = useState("");
+  const [ways, setWays] = useState("");
   const [reason, setReason] = useState<Reason>("none");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
@@ -283,6 +286,7 @@ function LinkForm({
           note: note || undefined,
           senderAddress: address,
           senderName,
+          splitWays: mode === "split" ? Number(ways) || undefined : undefined,
         }),
       });
       if (res.ok) {
@@ -297,6 +301,7 @@ function LinkForm({
   const reset = () => {
     setCreated(null);
     setAmount("");
+    setWays("");
     setReason("none");
     setNote("");
     setCopied(false);
@@ -308,7 +313,9 @@ function LinkForm({
     const text =
       created.direction === "request"
         ? `Can you send me ${usd(created.amountUsd)}?`
-        : `${usd(created.amountUsd)} for you`;
+        : created.direction === "split"
+          ? `Chip in for ${usd(created.amountUsd)} on Beam`
+          : `${usd(created.amountUsd)} for you`;
     try {
       if (navigator.share) {
         await navigator.share({ title: "Beam", text, url });
@@ -323,21 +330,35 @@ function LinkForm({
 
   if (created) {
     const isReq = created.direction === "request";
+    const isSplit = created.direction === "split";
     return (
       <div className="card animate-pop flex flex-col gap-3">
         <p className="text-sm text-[var(--muted)]">
-          {isReq ? "Request ready — share it" : "Link ready — share it"}
+          {isSplit
+            ? "Split ready — share it with the group"
+            : isReq
+              ? "Request ready — share it"
+              : "Link ready — share it"}
         </p>
         <p className="text-2xl font-bold">
           {REASON_META[created.reason].emoji} {usd(created.amountUsd)}
+          {isSplit && created.splitWays ? (
+            <span className="ml-2 text-sm font-normal text-[var(--muted)]">
+              {usd(Number(created.amountUsd) / created.splitWays)} each ·{" "}
+              {created.splitWays} ways
+            </span>
+          ) : null}
         </p>
+        <Qr url={claimUrl(created.id)} />
         <div className="truncate rounded-xl bg-[var(--surface-2)] px-3 py-2 text-xs text-[var(--accent-2)]">
           {claimUrl(created.id)}
         </div>
         <p className="text-xs text-[var(--muted)]">
-          {isReq
-            ? "Send this to whoever owes you — they pay with a tap."
-            : "Send this to whoever you're paying — they claim with a tap."}
+          {isSplit
+            ? "Everyone who opens it pays their share — it fills up live."
+            : isReq
+              ? "Send this to whoever owes you — they pay with a tap."
+              : "Send this to whoever you're paying — they claim with a tap."}
         </p>
         <div className="flex gap-2">
           <button className="btn btn-primary flex-1" onClick={share}>
@@ -353,9 +374,9 @@ function LinkForm({
 
   return (
     <div className="card flex flex-col gap-3">
-      {/* Send / Request toggle */}
-      <div className="grid grid-cols-2 gap-1 rounded-2xl bg-[var(--surface-2)] p-1">
-        {(["send", "request"] as Direction[]).map((m) => (
+      {/* Send / Request / Split toggle */}
+      <div className="grid grid-cols-3 gap-1 rounded-2xl bg-[var(--surface-2)] p-1">
+        {(["send", "request", "split"] as Direction[]).map((m) => (
           <button
             key={m}
             onClick={() => setMode(m)}
@@ -372,7 +393,9 @@ function LinkForm({
       <p className="text-sm text-[var(--muted)]">
         {mode === "request"
           ? "Request money — they pay with a tap"
-          : "Send money — they claim it with a tap"}
+          : mode === "split"
+            ? "Split a bill — everyone pays their share"
+            : "Send money — they claim it with a tap"}
       </p>
       <div className="flex items-center gap-2">
         <span className="text-3xl font-bold text-[var(--muted)]">$</span>
@@ -384,6 +407,22 @@ function LinkForm({
           onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))}
         />
       </div>
+      {mode === "split" && (
+        <div className="flex items-center gap-2">
+          <input
+            className="input"
+            inputMode="numeric"
+            placeholder="Split how many ways? (e.g. 4)"
+            value={ways}
+            onChange={(e) => setWays(e.target.value.replace(/[^0-9]/g, ""))}
+          />
+          {amount && Number(ways) >= 2 && (
+            <span className="shrink-0 text-sm text-[var(--muted)]">
+              {usd(Number(amount) / Number(ways))} each
+            </span>
+          )}
+        </div>
+      )}
       <div className="flex flex-wrap gap-2">
         {PRESETS.map((r) => (
           <button
@@ -412,7 +451,9 @@ function LinkForm({
           ? "Creating…"
           : mode === "request"
             ? "Create request link"
-            : "Create payment link"}
+            : mode === "split"
+              ? "Create split link"
+              : "Create payment link"}
       </button>
     </div>
   );
@@ -433,52 +474,93 @@ function Activity({
   return (
     <section className="flex flex-col gap-2">
       <p className="px-1 text-sm text-[var(--muted)]">Activity</p>
-      {links.map((l) => (
-        <div
-          key={l.id}
-          className="card flex items-center justify-between gap-3 !p-4"
-        >
-          <div className="min-w-0">
-            <p className="font-semibold">
-              {REASON_META[l.reason].emoji} {usd(l.amountUsd)}
-              <span className="ml-2 text-xs font-normal text-[var(--muted)]">
-                {l.direction === "request" ? "request" : "sent"}
-              </span>
-            </p>
-            <p className="truncate text-xs text-[var(--muted)]">
-              {l.status === "pending" &&
-                (l.direction === "request"
-                  ? "Waiting for payment"
-                  : "Waiting to be claimed")}
-              {l.status === "claiming" &&
-                `${l.claimantEmail ?? short(l.claimantAddress)} is ${
-                  l.direction === "request" ? "paying" : "claiming"
-                }`}
-              {l.status === "sending" && "Settling on Arbitrum…"}
-              {l.status === "paid" &&
-                (l.direction === "request"
-                  ? "Received on Arbitrum ✓"
-                  : "Settled on Arbitrum ✓")}
-            </p>
+      {links.map((l) =>
+        l.direction === "split" ? (
+          <SplitRow key={l.id} link={l} />
+        ) : (
+          <div
+            key={l.id}
+            className="card flex items-center justify-between gap-3 !p-4"
+          >
+            <div className="min-w-0">
+              <p className="font-semibold">
+                {REASON_META[l.reason].emoji} {usd(l.amountUsd)}
+                <span className="ml-2 text-xs font-normal text-[var(--muted)]">
+                  {l.direction === "request" ? "request" : "sent"}
+                </span>
+              </p>
+              <p className="truncate text-xs text-[var(--muted)]">
+                {l.status === "pending" &&
+                  (l.direction === "request"
+                    ? "Waiting for payment"
+                    : "Waiting to be claimed")}
+                {l.status === "claiming" &&
+                  `${l.claimantEmail ?? short(l.claimantAddress)} is ${
+                    l.direction === "request" ? "paying" : "claiming"
+                  }`}
+                {l.status === "sending" && "Settling on Arbitrum…"}
+                {l.status === "paid" &&
+                  (l.direction === "request"
+                    ? "Received on Arbitrum ✓"
+                    : "Settled on Arbitrum ✓")}
+              </p>
+            </div>
+            {/* Only "send" links need the creator to approve a payout. */}
+            {l.direction === "send" && l.status === "claiming" && (
+              <button
+                className="btn btn-primary !px-4 !py-2"
+                disabled={payingId === l.id}
+                onClick={() => onPay(l)}
+              >
+                {payingId === l.id ? "Sending…" : `Send ${usd(l.amountUsd)}`}
+              </button>
+            )}
+            {l.status === "pending" && (
+              <Badge>{l.direction === "request" ? "Requested" : "Pending"}</Badge>
+            )}
+            {l.status === "sending" && <Badge>Sending…</Badge>}
+            {l.status === "paid" && <Badge tone="success">Paid</Badge>}
           </div>
-          {/* Only "send" links need the creator to approve a payout. */}
-          {l.direction === "send" && l.status === "claiming" && (
-            <button
-              className="btn btn-primary !px-4 !py-2"
-              disabled={payingId === l.id}
-              onClick={() => onPay(l)}
-            >
-              {payingId === l.id ? "Sending…" : `Send ${usd(l.amountUsd)}`}
-            </button>
-          )}
-          {l.status === "pending" && (
-            <Badge>{l.direction === "request" ? "Requested" : "Pending"}</Badge>
-          )}
-          {l.status === "sending" && <Badge>Sending…</Badge>}
-          {l.status === "paid" && <Badge tone="success">Paid</Badge>}
-        </div>
-      ))}
+        ),
+      )}
     </section>
+  );
+}
+
+/** Activity row for a split link — live progress bar + contributor count. */
+function SplitRow({ link }: { link: BeamLink }) {
+  const total = Number(link.amountUsd);
+  const collected = collectedUsd(link);
+  const pct = Math.min(100, total > 0 ? (collected / total) * 100 : 0);
+  const n = link.contributions?.length ?? 0;
+  return (
+    <div className="card flex flex-col gap-2 !p-4">
+      <div className="flex items-center justify-between">
+        <p className="font-semibold">
+          {REASON_META[link.reason].emoji} {usd(link.amountUsd)}
+          <span className="ml-2 text-xs font-normal text-[var(--muted)]">
+            split
+          </span>
+        </p>
+        {link.status === "paid" ? (
+          <Badge tone="success">Funded</Badge>
+        ) : (
+          <Badge>
+            {n} {n === 1 ? "payer" : "payers"}
+          </Badge>
+        )}
+      </div>
+      <div className="h-2 w-full overflow-hidden rounded-full bg-[var(--surface-2)]">
+        <div
+          className="h-full rounded-full bg-[var(--success)] transition-all"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <p className="text-xs text-[var(--muted)]">
+        {usd(collected)} of {usd(total)} collected
+        {link.status === "paid" ? " · settled on Arbitrum ✓" : ""}
+      </p>
+    </div>
   );
 }
 
