@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse, after } from "next/server";
-import { getLink, updateLink } from "@/lib/links";
+import { getLink, updateLink, reserveEscrow } from "@/lib/links";
 import { isEvmAddress, isEmail } from "@/lib/validate";
 import { relayerConfigured, payoutUsdc } from "@/lib/relayer";
 import { notifyRecipientPaid } from "@/lib/email";
+import { rateLimit, tooMany } from "@/lib/ratelimit";
 
 // The recipient opens a "send" link and logs in. We record their address and —
 // when the link is funded in escrow — pay them out immediately from the relayer.
@@ -11,6 +12,7 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  if (!rateLimit(req, "claim", 15)) return tooMany();
   const { id } = await params;
   const link = await getLink(id);
   if (!link) return NextResponse.json({ error: "not found" }, { status: 404 });
@@ -67,6 +69,8 @@ export async function POST(
     txId: payout.txHash,
     paidAt: Date.now(),
   });
+  // Funds have left the escrow — free their reservation.
+  await reserveEscrow(-Number(link.amountUsd));
 
   if (claimantEmail) {
     after(() =>

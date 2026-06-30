@@ -4,6 +4,9 @@ import {
   claimUsername,
   usernameToAddress,
 } from "@/lib/links";
+import { isEvmAddress } from "@/lib/validate";
+import { usernameClaimMessage, verifySigner } from "@/lib/auth";
+import { rateLimit, tooMany } from "@/lib/ratelimit";
 
 // Resolve a handle -> address (?name=) or address -> handle (?address=).
 export async function GET(req: NextRequest) {
@@ -19,12 +22,16 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ error: "name or address required" }, { status: 400 });
 }
 
-// Claim/update a handle for an address.
+// Claim/update a handle for an address — gated by a signature proving the
+// caller controls that address (otherwise anyone could squat handles).
 export async function POST(req: NextRequest) {
+  if (!rateLimit(req, "username", 15)) return tooMany();
   const body = await req.json().catch(() => null);
-  const { address, name } = body ?? {};
-  if (!address || !name)
-    return NextResponse.json({ error: "address and name required" }, { status: 400 });
+  const { address, name, signature } = body ?? {};
+  if (!isEvmAddress(address) || !name)
+    return NextResponse.json({ error: "valid address and name required" }, { status: 400 });
+  if (!verifySigner(usernameClaimMessage(String(name), String(address)), signature, String(address)))
+    return NextResponse.json({ error: "signature does not match address" }, { status: 401 });
   const result = await claimUsername(String(address), String(name));
   return NextResponse.json(result, { status: result.ok ? 200 : 409 });
 }

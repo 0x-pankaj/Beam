@@ -1,16 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getLink, updateLink, markTxUsed } from "@/lib/links";
+import { getLink, updateLink, reserveEscrow, getReservedEscrow } from "@/lib/links";
 import { relayerAddress, relayerConfigured } from "@/lib/relayer";
-import { verifyUsdcTransfer } from "@/lib/arbitrum";
-import { isTxHash } from "@/lib/validate";
+import { waitForUsdcBalance } from "@/lib/arbitrum";
+import { rateLimit, tooMany } from "@/lib/ratelimit";
 
 // The sender deposited USDC into the escrow relayer for a "send" link. We verify
-// the deposit landed on-chain, then lock the link as "funded" — from here the
-// recipient's payout is guaranteed and no longer depends on the sender.
+// the deposit ON-CHAIN by reconciling the relayer's real USDC balance against the
+// amount already reserved for other funded links, then lock the link as "funded".
+// From here the recipient's payout is guaranteed regardless of the sender.
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  if (!rateLimit(req, "fund", 15)) return tooMany();
   const { id } = await params;
   const link = await getLink(id);
   if (!link) return NextResponse.json({ error: "not found" }, { status: 404 });
@@ -24,21 +26,30 @@ export async function POST(
     return NextResponse.json({ error: "escrow not configured" }, { status: 503 });
 
   const body = await req.json().catch(() => null);
-  const txId = body?.txId;
-  if (!isTxHash(txId))
-    return NextResponse.json({ error: "missing/invalid txId" }, { status: 400 });
+  // The Particle activity id (opaque) — stored for the activity link, not verified.
+  const fundTxId = body?.txId ? String(body.txId).slice(0, 120) : undefined;
 
-  // Reject replays before we trust the deposit.
-  if (!(await markTxUsed(txId)))
-    return NextResponse.json({ error: "tx already used" }, { status: 409 });
+  const amount = Number(link.amountUsd);
 
-  const check = await verifyUsdcTransfer(txId, escrow, Number(link.amountUsd));
-  if (!check.ok)
+  // Reserve first (atomic), then confirm the on-chain balance covers the full
+  // reserved total. This is race-safe: concurrent deposits each reserve their
+  // own slice and must each be backed by real balance, or they roll back.
+  const reservedAfter = await reserveEscrow(amount);
+  const balance = await waitForUsdcBalance(escrow, reservedAfter);
+
+  if (balance + 0.01 < reservedAfter) {
+    await reserveEscrow(-amount); // release our reservation; deposit not seen yet
+    const reserved = await getReservedEscrow();
     return NextResponse.json(
-      { error: `deposit not verified: ${check.error ?? "no matching transfer"}` },
+      {
+        error: "deposit not yet confirmed on Arbitrum — try again in a moment",
+        escrowBalance: balance,
+        reserved,
+      },
       { status: 402 },
     );
+  }
 
-  const next = await updateLink(id, { status: "funded", fundTxId: String(txId) });
+  const next = await updateLink(id, { status: "funded", fundTxId });
   return NextResponse.json(next);
 }

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getLink, updateLink } from "@/lib/links";
+import { getLink, updateLink, reserveEscrow } from "@/lib/links";
 import { relayerConfigured, payoutUsdc } from "@/lib/relayer";
 import { isEvmAddress } from "@/lib/validate";
+import { rateLimit, tooMany } from "@/lib/ratelimit";
 
 // The sender reclaims an unclaimed, funded "send" link. The escrow returns the
 // USDC to the sender on Arbitrum so funds are never stranded if nobody claims.
@@ -9,6 +10,7 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  if (!rateLimit(req, "refund", 15)) return tooMany();
   const { id } = await params;
   const link = await getLink(id);
   if (!link) return NextResponse.json({ error: "not found" }, { status: 404 });
@@ -42,5 +44,7 @@ export async function POST(
     payoutTxId: payout.txHash,
     txId: payout.txHash,
   });
+  // Funds have left the escrow — free their reservation.
+  await reserveEscrow(-Number(link.amountUsd));
   return NextResponse.json(next);
 }

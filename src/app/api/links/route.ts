@@ -5,11 +5,14 @@ import {
   publicLink,
   type Reason,
 } from "@/lib/links";
+import { isEvmAddress, isEmail, safeUrl } from "@/lib/validate";
+import { rateLimit, tooMany } from "@/lib/ratelimit";
 
 const REASONS: Reason[] = ["rent", "split", "gift", "tip", "none"];
 
 // Create a payment link / campaign / product.
 export async function POST(req: NextRequest) {
+  if (!rateLimit(req, "create", 30)) return tooMany();
   const body = await req.json().catch(() => null);
   if (!body) return NextResponse.json({ error: "bad json" }, { status: 400 });
 
@@ -22,12 +25,13 @@ export async function POST(req: NextRequest) {
     unlockUrl,
     senderAddress,
     senderName,
+    senderEmail,
     splitWays,
   } = body;
   if (!amountUsd || Number(amountUsd) <= 0)
     return NextResponse.json({ error: "invalid amount" }, { status: 400 });
-  if (!senderAddress)
-    return NextResponse.json({ error: "missing sender" }, { status: 400 });
+  if (!isEvmAddress(senderAddress))
+    return NextResponse.json({ error: "invalid sender address" }, { status: 400 });
 
   const ways = Number(splitWays);
   const link = await createLink({
@@ -36,9 +40,11 @@ export async function POST(req: NextRequest) {
     reason: REASONS.includes(reason) ? reason : "none",
     note: note ? String(note).slice(0, 140) : undefined,
     title: title ? String(title).slice(0, 80) : undefined,
-    unlockUrl: unlockUrl ? String(unlockUrl).slice(0, 500) : undefined,
+    // Validate as a real http(s) URL so we never store/serve junk as unlock content.
+    unlockUrl: unlockUrl ? safeUrl(unlockUrl) ?? undefined : undefined,
     senderAddress: String(senderAddress),
     senderName: senderName ? String(senderName).slice(0, 40) : undefined,
+    senderEmail: isEmail(senderEmail) ? String(senderEmail).slice(0, 80) : undefined,
     splitWays: Number.isFinite(ways) && ways >= 2 ? Math.floor(ways) : undefined,
   });
   // Echo back the creator's own link incl. unlockUrl so they can see what they set.

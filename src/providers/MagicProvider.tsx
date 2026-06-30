@@ -28,6 +28,8 @@ type MagicContextType = {
   googleEnabled: boolean;
   loginWithEmailOTP: (email: string) => Promise<string>;
   loginWithGoogle: () => Promise<string>;
+  /** Sign a plain message with the Magic EOA (proves address ownership). */
+  signMessage: (message: string) => Promise<string>;
   logout: () => Promise<void>;
 };
 
@@ -39,6 +41,7 @@ const MagicContext = createContext<MagicContextType>({
   googleEnabled: false,
   loginWithEmailOTP: async () => "",
   loginWithGoogle: async () => "",
+  signMessage: async () => "",
   logout: async () => {},
 });
 
@@ -119,6 +122,18 @@ export const MagicProvider = ({ children }: { children: ReactNode }) => {
     return addr;
   }, [magic]);
 
+  const signMessage = useCallback(
+    async (message: string) => {
+      if (!magic) throw new Error("Magic not ready");
+      const provider = new BrowserProvider(
+        (magic as unknown as { rpcProvider: Eip1193Provider }).rpcProvider,
+      );
+      const signer = await provider.getSigner();
+      return signer.signMessage(message);
+    },
+    [magic],
+  );
+
   const logout = useCallback(async () => {
     if (magic) await magic.user.logout();
     setAddress(null);
@@ -136,9 +151,10 @@ export const MagicProvider = ({ children }: { children: ReactNode }) => {
       googleEnabled: !!GOOGLE_CLIENT_ID,
       loginWithEmailOTP,
       loginWithGoogle,
+      signMessage,
       logout,
     }),
-    [magic, address, email, loginWithEmailOTP, loginWithGoogle, logout],
+    [magic, address, email, loginWithEmailOTP, loginWithGoogle, signMessage, logout],
   );
 
   return <MagicContext.Provider value={value}>{children}</MagicContext.Provider>;

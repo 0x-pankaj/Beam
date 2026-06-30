@@ -147,8 +147,12 @@ interface LinkStore {
   listBySender(senderAddress: string): Promise<BeamLink[]>;
   update(id: string, patch: Partial<BeamLink>): Promise<BeamLink | null>;
   addContribution(id: string, c: Contribution): Promise<BeamLink | null>;
-  /** Atomically claim a settled tx hash. False if it was already used (replay). */
+  /** Atomically claim a settled tx id. False if it was already used (replay). */
   markTxUsed(txId: string): Promise<boolean>;
+  /** Atomically add to the escrow's reserved (locked) total; returns the new total. */
+  reserveEscrow(amountUsd: number): Promise<number>;
+  /** Current reserved (locked, unpaid) escrow total across all funded links. */
+  getReservedEscrow(): Promise<number>;
   claimUsername(address: string, name: string): Promise<ClaimResult>;
   usernameToAddress(name: string): Promise<string | null>;
   addressToUsername(address: string): Promise<string | null>;
@@ -208,6 +212,7 @@ class MemoryStore implements LinkStore {
   private unameToAddr = new Map<string, string>();
   private addrToUname = new Map<string, string>();
   private usedTx = new Set<string>();
+  private reserved = 0;
 
   async create(input: CreateInput) {
     const link = buildLink(input);
@@ -242,6 +247,13 @@ class MemoryStore implements LinkStore {
     if (this.usedTx.has(k)) return false;
     this.usedTx.add(k);
     return true;
+  }
+  async reserveEscrow(amountUsd: number) {
+    this.reserved = Math.max(0, this.reserved + amountUsd);
+    return this.reserved;
+  }
+  async getReservedEscrow() {
+    return this.reserved;
   }
   async claimUsername(address: string, name: string) {
     const n = normUsername(name);
@@ -359,6 +371,18 @@ class RedisStore implements LinkStore {
     ]);
     return res === "OK";
   }
+  async reserveEscrow(amountUsd: number) {
+    const res = await this.cmd<string | number>([
+      "INCRBYFLOAT",
+      "beam:escrow:reserved",
+      amountUsd,
+    ]);
+    return Number(res);
+  }
+  async getReservedEscrow() {
+    const res = await this.cmd<string | null>(["GET", "beam:escrow:reserved"]);
+    return res ? Number(res) : 0;
+  }
   async claimUsername(address: string, name: string) {
     const n = normUsername(name);
     if (!USERNAME_RE.test(n))
@@ -404,6 +428,9 @@ export const updateLink = (id: string, patch: Partial<BeamLink>) =>
 export const addContribution = (id: string, c: Contribution) =>
   getStore().addContribution(id, c);
 export const markTxUsed = (txId: string) => getStore().markTxUsed(txId);
+export const reserveEscrow = (amountUsd: number) =>
+  getStore().reserveEscrow(amountUsd);
+export const getReservedEscrow = () => getStore().getReservedEscrow();
 export const claimUsername = (address: string, name: string) =>
   getStore().claimUsername(address, name);
 export const usernameToAddress = (name: string) =>

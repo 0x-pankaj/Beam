@@ -1298,6 +1298,7 @@ function LinkForm({
 /* ───────────────────────────── @handle card ─────────────────────────────── */
 
 function HandleCard({ address }: { address: string }) {
+  const { signMessage } = useMagic();
   const [name, setName] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -1315,14 +1316,19 @@ function HandleCard({ address }: { address: string }) {
     setBusy(true);
     setError(null);
     try {
+      // Prove we control this address by signing the claim (matches the server).
+      const message = `Beam username claim\nhandle: ${input.trim().toLowerCase()}\naddress: ${address.toLowerCase()}`;
+      const signature = await signMessage(message);
       const res = await fetch("/api/username", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ address, name: input }),
+        body: JSON.stringify({ address, name: input, signature }),
       });
       const d = await res.json();
       if (d.ok) setName(d.username);
       else setError(d.error ?? "Couldn't claim that handle");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't claim that handle");
     } finally {
       setBusy(false);
     }
