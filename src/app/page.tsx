@@ -18,6 +18,7 @@ import {
 import { claimUrl, short, usd } from "@/lib/format";
 import { chainName } from "@/lib/chains";
 import { onRampUrl, offRampUrl } from "@/lib/ramp";
+import { ReceiveModal } from "@/components/ReceiveModal";
 import { GoogleGlyph } from "@/components/GoogleGlyph";
 import { Qr } from "@/components/Qr";
 import { SettleAnimation } from "@/components/SettleAnimation";
@@ -762,6 +763,7 @@ function BalanceHero({
           >
             Add money
           </button>
+          {address && <ReceiveModal address={address} />}
           <button
             onClick={() => window.open(offRampUrl(address), "_blank", "noopener")}
             style={{
