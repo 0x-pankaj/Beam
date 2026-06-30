@@ -8,6 +8,8 @@
 
 Beam is a chain-abstracted consumer payments app — Cash App–style **payment links with walletless claim**. A sender pays from whatever crypto they hold on whatever chain; the recipient claims with a Google or email login (no wallet, no seed phrase, no app); everything settles as USDC on **Arbitrum**.
 
+Money is **guaranteed in escrow** the moment a link is created, campaign totals are **verified on-chain**, and the full fiat lifecycle is covered — **add money** with a card and **cash out** to a bank, all without the user ever touching a chain, a gas token, or a seed phrase.
+
 The crypto is invisible. That's the whole point.
 
 </div>
@@ -23,8 +25,11 @@ The crypto is invisible. That's the whole point.
   - [Particle Universal Accounts (EIP-7702)](#1-particle-universal-accounts--eip-7702)
   - [Magic embedded wallet](#2-magic-embedded-wallet-walletless-onboarding)
   - [Arbitrum settlement](#3-arbitrum-settlement)
+  - [Escrow & on-chain trust](#4-escrow--on-chain-trust)
+  - [Fiat on-ramp / cash-out & deposit-sweep](#5-fiat-on-ramp--cash-out--deposit-sweep)
 - [Architecture](#architecture)
 - [The payment-link lifecycle](#the-payment-link-lifecycle)
+- [Trust & money safety](#trust--money-safety)
 - [Tech stack](#tech-stack)
 - [Project structure](#project-structure)
 - [Run it locally](#run-it-locally)
@@ -54,11 +59,11 @@ Every one of those steps loses a normal person. Beam removes **all of them**. Th
 The entire experience is one link and one tap:
 
 1. **Alice signs in with Google** (or email). Behind the scenes her login key becomes a chain-abstracted account — *no new address shown*.
-2. **Her dashboard shows one balance in USD**, aggregated across every chain. She never picks a chain.
-3. **Alice creates a $50 link** — picks a reason (Rent / Split / Gift / Tip), gets a shareable URL with a rich preview.
+2. **Her dashboard shows one balance in USD**, aggregated across every chain. She never picks a chain. She can **add money** with a card or **cash out** to her bank right there.
+3. **Alice creates a $50 link** — picks a reason (Rent / Split / Gift / Tip). The $50 is **locked in escrow** as she creates it, and she gets a shareable URL with a rich preview.
 4. **Bob opens the link. He has no wallet.** He signs in with Google and instantly has a chain-abstracted account.
-5. **Alice approves; the $50 moves cross-chain and settles as USDC on Arbitrum to Bob**, sourced automatically from her scattered balances.
-6. **Both sides update live** with a success animation and a settlement link.
+5. **The $50 pays out to Bob automatically and settles as USDC on Arbitrum** the instant he claims — sourced from escrow, with no need for Alice to be online. Bob can then **cash out to his bank** in one tap.
+6. **Both sides update live** with a success animation and a real Arbiscan settlement link. If nobody ever claims, Alice **reclaims** her money.
 
 ## Features
 
@@ -66,23 +71,28 @@ Beam started as one-to-one send links and grew into a full chain-abstracted mone
 
 | | Feature | What it does |
 | --- | --- | --- |
-| 💸 | **Send links** | Creator pays; the recipient claims **walletless** (Google/email). The core wedge — the recipient needs no wallet. |
+| 💸 | **Send links (guaranteed escrow)** | Creator pays; the recipient claims **walletless** (Google/email). Funds are **locked in escrow at create-time** and pay out **automatically on claim** — guaranteed even if the sender goes offline. The core wedge: the recipient needs no wallet. |
+| ↩️ | **Reclaim unclaimed money** | If nobody claims a send link, the sender pulls the funds back from escrow. Links **soft-expire after 7 days** with a "Reclaim $X" nudge so money is never stranded. |
 | 🙋 | **Request links** | The opener pays the creator. The inverse of send, same one-tap settle on Arbitrum. |
+| 📥 | **Receive from anyone (QR)** | Show a QR of your address so **anyone — even on MetaMask or an exchange, no Beam account** — can pay you directly. No request link needed; an optional amount builds an EIP-681 USDC request. |
+| 🔀 | **Auto deposit-sweep** | USDC that lands on another chain (e.g. someone paid your QR from Base) is **detected and auto-routed to Arbitrum** via Particle, so everything consolidates in one place. |
 | 📷 | **Pay anyone** | Pay any external wallet by **address or ENS** (`name.eth`), or **scan their QR**. The universal scanner also opens Beam link QRs. Settles USDC to them on Arbitrum. |
-| 🍕 | **Split / group pay** | One link, **many payers** from different chains. A live **progress bar** fills as each person pays their share; confetti when funded. |
-| 🎯 | **Crowdfunding** | Open, goal-based campaigns — anyone backs any amount toward a target; raised-vs-goal updates live. |
-| 🛒 | **Sell paid programs** | Reusable fixed-price product links — unlimited buyers, each pays the price. **Pay-to-unlock**: buyers reveal the content (course/file/invite) only after paying. |
+| 🍕 | **Split / group pay (verified)** | One link, **many payers** from different chains, into a per-campaign escrow. The "$X collected" total is the **real on-chain balance** — auto-closes and sweeps to the creator when the target is hit. |
+| 🎯 | **Crowdfunding (verified)** | Open, goal-based campaigns — anyone backs any amount toward a target. Raised-vs-goal is **verified on-chain**; the creator **collects** to their account anytime. |
+| 🛒 | **Sell paid programs** | Reusable fixed-price product links — unlimited buyers, each pays the price into verifiable escrow. **Pay-to-unlock**: buyers reveal the content (course/file/invite) only after paying. |
+| 💳 | **Add money (fiat on-ramp)** | Buy USDC with a card or bank via Particle's hosted ramp; it lands in your Beam account on Arbitrum. |
+| 🏦 | **Cash out (fiat off-ramp)** | Sell USDC to your bank — surfaced on the dashboard and right on the recipient's "money received" screen, closing the loop for a walletless user. |
 | 🏪 | **Creator storefront** | `/u/<name>` lists a creator's campaigns & products in one shareable page. |
-| @ | **Username pay-links** | Claim a permanent `/u/<name>` handle (like a Cash-App `$cashtag`) — a reusable "pay me" link, with QR. |
-| 📱 | **QR codes** | Every link/handle gets a scannable QR — share to a screen, claim on a phone. |
+| @ | **Username pay-links** | Claim a permanent `/u/<name>` handle (like a Cash-App `$cashtag`) — a reusable "pay me" link, with QR. Claims are **signature-gated** so handles can't be squatted. |
+| 📱 | **QR codes** | Every link/handle/address gets a scannable QR — share to a screen, claim on a phone. |
 | 🛰️ | **Cross-chain routing viz** | On every settle, an animation shows funds flowing **source chain(s) → Arbitrum**, derived from the real transaction. |
-| 🔎 | **On-chain proof** | Success screens link to the recipient's **USDC transfers on Arbiscan** plus the UniversalX activity. |
+| 🔎 | **On-chain proof** | Success screens link to **USDC transfers on Arbiscan**, the real payout tx, plus the UniversalX activity. |
 | ⛽ | **$0-gas badge** | Surfaces UA gas abstraction when fees are waived. |
 | ✨ | **7702 onboarding moment** | A one-time "securing your account" overlay on first login that hides the EIP-7702 upgrade ("no wallet, no seed phrase"). |
 | 📊 | **Unified balance + per-chain breakdown** | One USD number, with chips showing where the money actually lives. |
-| 📲 | **Installable PWA** | Manifest + icon + theme color — "Add to Home Screen," feels native. |
+| 📲 | **Installable PWA** | Manifest + icon + theme color — "Add to Home Screen," feels native. Mobile has a tap-to-open account sheet (who's signed in + log out). |
 | ✉️ | **Email delivery (optional)** | Email a link straight to a recipient via Resend (gated; no-ops without a key). |
-| 🔔 | **Creator notifications** | The creator gets a "💰 you got paid $X" email the moment a request/split/fund/product payment settles (optional, via Resend). Live dashboard updates too. |
+| 🔔 | **Paid notifications** | "💰 you got paid $X" to the creator and "🎉 you received $X" to a walletless recipient the moment a payment settles (optional, via Resend). Live dashboard updates too. |
 
 Every flow settles on **Arbitrum** via Universal Accounts and onboards with **Magic** — the three sponsor technologies are load-bearing, not decorative.
 
@@ -118,47 +128,67 @@ Login lives in [`src/providers/MagicProvider.tsx`](src/providers/MagicProvider.t
 
 Every claim lands as **native USDC on Arbitrum One** (`0xaf88d065e77c8cC2239327C5EDb3A432268e5831`). Arbitrum is the canonical settlement layer for Beam: fast, cheap, deep USDC liquidity — the right place for money to actually *arrive*, regardless of where it came from. Settlement targets are defined in [`src/lib/chains.ts`](src/lib/chains.ts).
 
+### 4. Escrow & on-chain trust
+
+A payments app can't take the client's word that money moved. Beam holds funds in escrow and verifies everything against the chain.
+
+- **Send links are real escrow.** At create-time the sender's UA deposits USDC into a Beam-controlled **relayer wallet** ([`src/lib/relayer.ts`](src/lib/relayer.ts)); on claim, the server pays the recipient from it. Payout is **guaranteed** and independent of the sender being online.
+- **Deposits are verified on-chain.** The UA SDK returns only an opaque activity id (no destination tx hash), so verification reads the relayer's **real Arbitrum USDC balance** ([`src/lib/arbitrum.ts`](src/lib/arbitrum.ts)) and reconciles it against an atomic reserved-amount ledger — a link is only `funded` once the money has actually landed.
+- **Campaign totals are verified, not self-reported.** Each split/fund/product link gets its **own deposit address**, derived deterministically from the relayer key. "$X raised" is that address's real on-chain balance; the creator **collects** it to their account, and a split auto-closes + sweeps when the verified target is hit.
+- **Replay-protected & rate-limited.** Reported settlement ids can't be reused; every mutating route is per-IP rate-limited; addresses, URLs, and emails are validated; user input is HTML-escaped. Username claims are **signature-gated** (the caller signs with their Magic key to prove ownership). See [`src/lib/validate.ts`](src/lib/validate.ts), [`src/lib/ratelimit.ts`](src/lib/ratelimit.ts), [`src/lib/auth.ts`](src/lib/auth.ts).
+
+### 5. Fiat on-ramp / cash-out & deposit-sweep
+
+The lifecycle is complete: money gets in and out as fiat, and inbound crypto consolidates automatically.
+
+- **Add money / Cash out** use Particle Network's hosted ramp ([`src/lib/ramp.ts`](src/lib/ramp.ts)) — a KYC-compliant widget deep-linked with the user's address, so bought USDC lands in Beam and cash-outs sell to a bank. Particle was chosen over Magic (whose ramp doesn't support Arbitrum and forces its own wallet UI) and Circle (no consumer fiat ramp).
+- **Auto deposit-sweep.** When someone pays your Receive QR from another chain, the funds arrive on *that* chain (the address is the same across EVM chains). Beam detects the off-Arbitrum USDC and **auto-routes it to Arbitrum** via a UA self-transfer — once per session, skipping dust. (It's one-tap-or-auto, not silent server-side, because only the user's Magic session can sign the move.)
+
 ## Architecture
 
 A single Next.js (App Router) application — UI, API, and chain logic in one deployable.
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│                      Next.js App (Vercel)                      │
-│                                                                │
-│  Browser (client)                     Server (route handlers)  │
-│  ┌────────────────────────┐           ┌─────────────────────┐  │
-│  │ MagicProvider          │           │ /api/links (CRUD)   │  │
-│  │  • Google / email login│           │ /api/links/[id]/    │  │
-│  │  • EIP-7702 signer      │          │   claim·sending·    │  │
-│  │ UniversalAccountProvider│          │   paid·contribute   │  │
-│  │  • UA init (7702 mode)  │          │ /api/username       │  │
-│  │  • unified balance      │          │ /api/notify·health  │  │
-│  │  • cross-chain transfer │          └──────────┬──────────┘  │
-│  └────────────┬───────────┘                      │             │
-│   Dashboard · Create (send/request/split)  ┌─────▼──────────┐  │
-│   Claim /claim/[id] · Handle /u/[username] │ Link + handle  │  │
-│                                            │ store          │  │
-│                                            │ Upstash/KV ⇄   │  │
-│                                            │ memory         │  │
-│                                            └────────────────┘  │
-└───────────────┬────────────────────────────────────────────────┘
-                │
-      ┌─────────▼──────────┐        ┌──────────────────────┐
-      │ Magic (signer +    │        │ Particle Universal   │
-      │ walletless login)  │───────▶│ Accounts (7702)      │───▶ Arbitrum (USDC)
-      └────────────────────┘        └──────────────────────┘
+┌───────────────────────────────────────────────────────────────────┐
+│                        Next.js App (Vercel)                         │
+│                                                                     │
+│  Browser (client)                      Server (route handlers)      │
+│  ┌────────────────────────┐            ┌──────────────────────────┐ │
+│  │ MagicProvider          │            │ /api/links (CRUD)        │ │
+│  │  • Google / email login│            │ /api/links/[id]/         │ │
+│  │  • EIP-7702 signer      │           │   claim·sending·paid·    │ │
+│  │ UniversalAccountProvider│           │   contribute·fund·       │ │
+│  │  • UA init (7702 mode)  │           │   refund·collect·unlock  │ │
+│  │  • unified balance       │          │ /api/relayer·username    │ │
+│  │  • cross-chain transfer  │          │ /api/notify·health       │ │
+│  │  • deposit-sweep         │          └─────┬────────────┬───────┘ │
+│  └────────────┬───────────┘                  │            │         │
+│   Dashboard · Create · Receive QR    ┌───────▼──────┐  ┌──▼───────┐ │
+│   Add money · Cash out (ramp)        │ Link+handle  │  │ Escrow   │ │
+│   Claim /claim/[id] · /u/[username]  │ store +      │  │ relayer  │ │
+│                                      │ reserved     │  │ wallet + │ │
+│                                      │ ledger       │  │ on-chain │ │
+│                                      │ Upstash/KV ⇄ │  │ verify   │ │
+│                                      │ memory       │  │ (USDC)   │ │
+│                                      └──────────────┘  └────┬─────┘ │
+└──────────────┬─────────────────────────────────────────────┼───────┘
+               │                                              │
+     ┌─────────▼──────────┐   ┌──────────────────────┐        │
+     │ Magic (signer +    │   │ Particle Universal   │        ▼
+     │ walletless login)  │──▶│ Accounts (7702) +    │──▶ Arbitrum (USDC) ◀── relayer
+     │                    │   │ hosted fiat ramp     │       settlement      payouts
+     └────────────────────┘   └──────────────────────┘
 ```
 
 ## The payment-link lifecycle
 
 Every link carries a **direction**:
 
-- **send** — the creator funds and approves; the recipient claims walletless (shown below).
-- **request** — the opener pays the creator on a tap.
-- **split** — many openers each pay a share via `/contribute`; the link flips to `paid` once the total fills.
-- **fund** — open crowdfunding: many backers pay any amount toward a goal; stays open (goal is a target, not a cap).
-- **product** — a reusable fixed-price listing: each buyer pays the price, then unlocks the content (`/unlock` is gated to addresses that paid; `unlockUrl` is never returned by public GETs).
+- **send** — the creator funds **escrow** at create-time; the recipient claims walletless and is **paid out automatically** (shown below). Unclaimed funds are reclaimable, and links soft-expire after 7 days.
+- **request** — the opener pays the creator directly on a tap.
+- **split** — many openers each pay a share into a **per-campaign escrow** via `/contribute`; the verified on-chain total auto-closes + sweeps to the creator once it fills.
+- **fund** — open crowdfunding: many backers pay any amount toward a goal; stays open (goal is a target, not a cap). The creator **collects** the verified balance anytime.
+- **product** — a reusable fixed-price listing: each buyer pays into escrow, then unlocks the content (`/unlock` is gated to addresses that paid; `unlockUrl` is never returned by public GETs).
 
 For a **send** link, Beam uses **real escrow**: the money is locked the moment the link is created, and the recipient is paid out **automatically** the instant they claim — it no longer depends on the sender returning online. Funds settle to a Beam-controlled relayer wallet on Arbitrum at create-time, and the server pays the recipient from it on claim.
 
@@ -180,6 +210,22 @@ create $50 link ───────────────────▶ pen
 
 Escrow deposits are verified **on-chain** by reconciling the relayer's real USDC balance against a reserved-amount ledger — a link can only be marked `funded` once the money has actually landed. When no relayer is configured, Beam falls back to the legacy sender-pays-on-claim flow. Polling (3–4s) on both screens keeps the demo's two windows in lockstep.
 
+## Trust & money safety
+
+How Beam makes sure money is real, guaranteed, and never stranded:
+
+| Concern | How Beam handles it |
+| --- | --- |
+| **Is the recipient guaranteed to get paid?** | Funds are locked in escrow at create-time; the server pays out on claim regardless of the sender. |
+| **Did the money actually arrive?** | Escrow deposits and campaign totals are verified against the **real on-chain USDC balance** on Arbitrum, not the client's word. |
+| **Can payment state be forged?** | Reported settlement ids are replay-protected; campaign totals derive from chain balance; mutating routes are rate-limited and input-validated. |
+| **Can a handle be squatted?** | Username claims require a **Magic-signed message** proving the caller controls the address. |
+| **What if nobody claims my link?** | The sender **reclaims** from escrow; links soft-expire after 7 days with a reclaim nudge. |
+| **What if money lands on the wrong chain?** | Inbound USDC on any chain is detected and **auto-swept to Arbitrum** via UA. |
+| **How does a walletless recipient get cash?** | One-tap **cash out to a bank** on the "money received" screen — no chains, gas, or exchanges. |
+
+> Trade-off, stated plainly: the relayer escrow is **custodial while funds are in flight** (a server-held hot wallet). It's the right call for a hackathon — guaranteed payouts with no contract to deploy. The non-custodial successor is an on-chain escrow contract (see roadmap).
+
 ## Tech stack
 
 | Layer | Choice |
@@ -189,7 +235,9 @@ Escrow deposits are verified **on-chain** by reconciling the relayer's real USDC
 | Styling | Tailwind CSS v4 (custom fintech design system, mobile-first) |
 | Chain abstraction | `@particle-network/universal-account-sdk` (EIP-7702 mode) |
 | Wallet / auth | `magic-sdk`, `@magic-ext/evm`, `@magic-ext/oauth2` (Google One-Tap) |
-| Signing | `ethers` v6 |
+| Signing / on-chain | `ethers` v6 (UA signing, escrow payouts, Arbitrum balance reads) |
+| Escrow | Server-held relayer wallet + reserved-amount ledger + per-campaign derived addresses |
+| Fiat ramp | Particle Network hosted on-ramp / off-ramp (deep-linked) |
 | Store | Upstash Redis / Vercel KV (REST) with in-memory fallback |
 | QR / email | `qrcode.react` (generate) · `qr-scanner` (camera) · Resend (optional) |
 | Hosting | Vercel (installable PWA) |
@@ -210,29 +258,41 @@ src/
 │   ├── pay/page.tsx             # Pay anyone: address / ENS / universal QR scan
 │   ├── api/
 │   │   ├── links/route.ts       # POST create · GET list-by-sender (unlockUrl stripped)
-│   │   ├── links/[id]/route.ts  # GET one (unlockUrl stripped)
-│   │   ├── links/[id]/claim/    # POST recipient announces claim
-│   │   ├── links/[id]/sending/  # POST sender approved, settling
-│   │   ├── links/[id]/paid/     # POST settled (txId)
-│   │   ├── links/[id]/contribute/  # POST a campaign payment (split/fund/product)
+│   │   ├── links/[id]/route.ts  # GET one (+ campaign escrowAddress; unlockUrl stripped)
+│   │   ├── links/[id]/claim/    # POST recipient claims → relayer auto-payout from escrow
+│   │   ├── links/[id]/fund/     # POST lock escrow at create (on-chain balance reconcile)
+│   │   ├── links/[id]/refund/   # POST sender reclaims an unclaimed funded link
+│   │   ├── links/[id]/sending/  # POST sender approved, settling (legacy path)
+│   │   ├── links/[id]/paid/     # POST settled (txId, replay-protected)
+│   │   ├── links/[id]/contribute/  # POST a campaign payment → verify on-chain total
+│   │   ├── links/[id]/collect/  # POST creator withdraws a campaign's verified balance
 │   │   ├── links/[id]/unlock/   # GET product content — gated to addresses that paid
-│   │   ├── username/route.ts    # GET resolve/availability · POST claim handle
+│   │   ├── relayer/route.ts     # GET escrow deposit address + configured status
+│   │   ├── username/route.ts    # GET resolve/availability · POST claim handle (signed)
 │   │   ├── notify/route.ts      # POST email a link (Resend, optional)
-│   │   └── health/route.ts      # Store + config diagnostics
+│   │   └── health/route.ts      # Store + relayer + provider diagnostics
 │   ├── manifest.ts              # PWA manifest
 │   ├── providers.tsx            # Wraps the app in both providers
 │   └── globals.css              # Design tokens + animations
 ├── providers/
-│   ├── MagicProvider.tsx        # Login (Google/email) + EOA signer
-│   └── UniversalAccountProvider.tsx  # UA init, balance, 7702, transfer + settle result
+│   ├── MagicProvider.tsx        # Login (Google/email) + EOA signer + signMessage
+│   └── UniversalAccountProvider.tsx  # UA init, balance, 7702, transfer, deposit-sweep
 ├── lib/
 │   ├── chains.ts                # Chain IDs, USDC, settlement target, explorer links
-│   ├── links.ts                 # Link/contribution/handle types + dual-backend store
+│   ├── links.ts                 # Link/contribution/handle types + dual-backend store + escrow ledger
+│   ├── relayer.ts               # Escrow holding wallet: payout, refund, per-campaign deposit + sweep
+│   ├── arbitrum.ts              # On-chain reads: USDC balance + deposit confirmation
+│   ├── validate.ts              # Address/URL/email validation + HTML escaping
+│   ├── auth.ts                  # Signature-based address-ownership checks
+│   ├── ratelimit.ts             # Per-IP rate limiting for mutating routes
+│   ├── ramp.ts                  # Fiat on-ramp / cash-out URLs (Particle ramp)
+│   ├── receive.ts               # Receive QR payloads (plain address / EIP-681)
+│   ├── email.ts                 # Resend templates (creator + recipient paid)
 │   ├── gsi.ts                   # Google One-Tap helper
 │   ├── ens.ts                   # ENS name → address (Ethereum mainnet RPC)
 │   ├── pay-target.ts            # Parse scanned/typed targets (address/ENS/Beam URL)
 │   └── format.ts                # Display helpers
-├── components/                  # GoogleGlyph · Qr · QrScan · SettleAnimation · OnboardingOverlay
+├── components/                  # GoogleGlyph · Qr · QrScan · ReceiveModal · SettleAnimation · OnboardingOverlay
 ├── types/particle-ua.d.ts       # Ambient types for the UA SDK
 └── public/icon.svg              # App icon (PWA + favicon)
 ```
@@ -297,31 +357,42 @@ Real things discovered building on bleeding-edge SDKs:
 - **Universal Accounts is mainnet-only.** Cross-chain liquidity needs Primary Assets with real depth, so there are no testnets — settlement is Arbitrum One with live USDC.
 - **Runtime vs. type resolution.** The UA SDK ships types but no `types` export condition. Pointing TypeScript at the `.d.ts` via `tsconfig` `paths` also remapped the bundler at runtime (the class became `undefined` in the browser). Fixed with a hand-written ambient declaration in `src/types/` so runtime always resolves the real package.
 - **Pluggable store.** The link store presents one async interface over either Upstash/KV (production) or an in-memory map (local), selected at runtime — so local dev needs zero infra while production persists.
+- **The SDK gives no destination tx hash.** `sendTransaction` returns only an opaque `transactionId` (a UniversalX activity id), so escrow can't be verified by receipt. Beam instead verifies by **balance reconciliation** — read the relayer's real Arbitrum USDC balance against a reserved-amount ledger — which needs no hash and proves the money landed.
+- **Per-campaign escrow without a contract.** Each campaign's deposit address is derived deterministically from the relayer key (`keccak256(key + linkId)`), giving isolated, on-chain-verifiable totals with no per-campaign config and no Solidity to deploy. Sweeps to the creator gas-fund the derived child from the master wallet.
+- **Auto-sweep can't be silent.** Moving a user's inbound off-chain USDC to Arbitrum needs a signature, and Magic never exposes the key — so the sweep is auto-fired client-side from the user's session (skipping dust), not by a background server.
+- **Fiat ramp provider.** Particle's hosted ramp was chosen because it supports Arbitrum + sell, needs no new SDK/key, and reuses the UA story — where Magic's ramp doesn't support Arbitrum and Circle has no consumer fiat ramp.
 
 ## Security
 
 - No secrets are committed. `.env*` is gitignored; only public (`NEXT_PUBLIC_*`) values reach the client bundle, by design.
-- Upstash/KV credentials are server-side only and live in deployment env vars.
+- Upstash/KV credentials and the escrow relayer key (`BEAM_RELAYER_PRIVATE_KEY`) are **server-side only** — never `NEXT_PUBLIC_`, never bundled to the client.
 - Universal Accounts have no private keys — ownership is delegated to the Magic-managed signer; the user authorizes each transaction.
-- Funds never move without an explicit action: a **send** link requires the creator's approval; **request**/**split**/**fund**/**product** payments are signed by the payer.
-- A product's **unlock content is server-side only** — stripped from every public response and returned solely to an address that has paid (purchase response + `/unlock` gate). (The gate trusts the client-submitted `txId`; on-chain verification is the production hardening step.)
+- Funds never move without an explicit action: a **send** link locks escrow on the creator's signed deposit; **request**/campaign payments are signed by the payer; sweeps/reclaims/collects are signed/initiated by the owner.
+- **On-chain verification** anchors trust: escrow deposits and campaign totals reconcile against the real Arbitrum USDC balance; reported settlement ids are **replay-protected**.
+- **Auth & abuse resistance:** username claims are signature-gated (proof of address ownership); every mutating route is per-IP **rate-limited**; addresses, URLs, and emails are validated; user input is **HTML-escaped** in emails.
+- A product's **unlock content is server-side only** — stripped from every public response and returned solely to an address that has paid (purchase response + `/unlock` gate).
+- **Custody note:** the escrow relayer is a server-held hot wallet holding only in-flight funds — fund it minimally and dedicate it to Beam. Non-custodial escrow (a contract) is the planned successor.
 
 ## Limitations & roadmap
 
 - **Demo settlement uses real mainnet USDC** (UA has no testnets) — amounts are intentionally tiny.
-- The link/handle store is sized for a demo footprint; production would add auth on the mutating endpoints, rate limits, and link expiry.
-- The "Arbitrum proof" links to the recipient's USDC transfers (the SDK returns a `transactionId`, not a destination tx hash) — a per-tx Arbiscan deep-link would be tighter if the SDK exposes it.
-- Roadmap: "top up from any wallet" (use existing MetaMask funds to fund the Beam account), gas-sponsored claims where UA allows, recurring/scheduled links, and "type what you want to pay" natural-language entry.
+- **Escrow is custodial** (a server-held relayer wallet) while funds are in flight. The non-custodial successor is an **on-chain escrow contract** keyed by link id — same UX, no hot wallet.
+- **Campaign deposit verification** reads on-chain balance; under heavy concurrency a contract with per-campaign accounting would be tighter than balance reconciliation.
+- **Link expiry is soft** (computed on read, 7 days) — a scheduled job could auto-refund expired links without the sender acting.
+- The "Arbitrum proof" links to the payout tx and the recipient's USDC transfers; the UA SDK exposes no per-leg destination hash for the cross-chain source.
+- Roadmap: **non-custodial escrow contract**, gas-sponsored claims where UA allows, recurring/scheduled links, automated expiry refunds, and "type what you want to pay" natural-language entry.
 
 ### Shipped highlights
 
-Send · request · **split/group** pay · **@username** handles · QR · cross-chain **routing visualization** · Arbiscan proof · $0-gas badge · EIP-7702 **onboarding moment** · installable **PWA** · optional email delivery.
+Guaranteed **escrow** send · **reclaim**/soft-expiry · request · **receive-from-anyone** QR · **verified** split/fund/product (per-campaign escrow) · **collect** to account · **add money** + **cash out** (fiat ramp) · auto **deposit-sweep** to Arbitrum · **@username** handles (signed) · pay anyone (address/ENS/QR) · cross-chain **routing viz** · Arbiscan proof · on-chain verification + rate limits + replay protection · $0-gas badge · EIP-7702 **onboarding moment** · installable **PWA** with mobile account menu · optional email delivery & paid notifications.
 
 ---
 
 <div align="center">
 
-**Cross-chain, walletless, feels like Cash App.**
+**Cross-chain, walletless, escrow-guaranteed — feels like Cash App.**
+
+Fiat in → send / request / verified campaigns → fiat out, without ever touching a chain.
 
 [Live demo](https://beam-encoder.vercel.app) · Built on Particle Universal Accounts · Magic · Arbitrum
 
