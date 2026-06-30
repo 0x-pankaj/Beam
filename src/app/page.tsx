@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useMagic } from "@/providers/MagicProvider";
 import {
@@ -16,7 +16,7 @@ import {
   type Reason,
 } from "@/lib/links";
 import { claimUrl, short, usd } from "@/lib/format";
-import { chainName } from "@/lib/chains";
+import { chainName, SETTLEMENT_CHAIN_ID } from "@/lib/chains";
 import { onRampUrl, offRampUrl } from "@/lib/ramp";
 import { ReceiveModal } from "@/components/ReceiveModal";
 import { GoogleGlyph } from "@/components/GoogleGlyph";
@@ -369,6 +369,29 @@ function Dashboard() {
     }
   };
 
+  // Which chains the off-Arbitrum USDC is sitting on (for the banner copy).
+  const offChains = useMemo(() => {
+    const ids = new Set<number>();
+    for (const a of primaryAssets?.assets ?? []) {
+      if (String(a.tokenType).toLowerCase() !== "usdc") continue;
+      for (const c of a.chainAggregation ?? [])
+        if (c.token.chainId !== SETTLEMENT_CHAIN_ID && c.amountInUSD > 0)
+          ids.add(c.token.chainId);
+    }
+    return [...ids];
+  }, [primaryAssets]);
+
+  // Auto-fire the sweep once per session when a meaningful amount lands off-chain.
+  // Skips dust (<$1) so UA fees never eat the whole deposit; the banner remains
+  // for manual control of smaller amounts or a retry.
+  const autoSwept = useRef(false);
+  useEffect(() => {
+    if (autoSwept.current || sweeping || offArbitrumUsdc < 1) return;
+    autoSwept.current = true;
+    consolidate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [offArbitrumUsdc]);
+
   // Collect a campaign's verified escrow balance to the creator's account.
   const collect = async (link: BeamLink) => {
     setPayingId(link.id);
@@ -579,10 +602,13 @@ function Dashboard() {
                   <span style={{ fontSize: 22 }}>💸</span>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#7a5a18" }}>
-                      {usd(offArbitrumUsdc)} arrived on another chain
+                      {usd(offArbitrumUsdc)} arrived on{" "}
+                      {offChains.length ? offChains.map(chainName).join(", ") : "another chain"}
                     </p>
                     <p style={{ margin: "1px 0 0", fontSize: 12, color: "#9a7e3f" }}>
-                      Move it to Arbitrum to settle in one place.
+                      {sweeping
+                        ? "Routing to Arbitrum via Particle…"
+                        : "Auto-routing to Arbitrum — or move it now."}
                     </p>
                   </div>
                   <button
