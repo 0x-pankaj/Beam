@@ -17,6 +17,7 @@ import {
 } from "@/lib/links";
 import { claimUrl, short, usd } from "@/lib/format";
 import { chainName } from "@/lib/chains";
+import { onRampUrl, offRampUrl } from "@/lib/ramp";
 import { GoogleGlyph } from "@/components/GoogleGlyph";
 import { Qr } from "@/components/Qr";
 import { SettleAnimation } from "@/components/SettleAnimation";
@@ -743,6 +744,42 @@ function BalanceHero({
             {copied ? "Address copied ✓" : `Deposit · ${short(address)}`}
           </button>
         )}
+        <div style={{ display: "flex", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
+          <button
+            onClick={() => window.open(onRampUrl(address), "_blank", "noopener")}
+            style={{
+              flex: "1 1 130px",
+              background: "#fff",
+              border: "none",
+              borderRadius: 12,
+              padding: "11px 14px",
+              fontSize: 13.5,
+              fontWeight: 700,
+              color: "var(--ap)",
+              cursor: "pointer",
+            }}
+            title="Buy USDC with a card or bank — lands in your Beam account on Arbitrum"
+          >
+            Add money
+          </button>
+          <button
+            onClick={() => window.open(offRampUrl(address), "_blank", "noopener")}
+            style={{
+              flex: "1 1 130px",
+              background: "rgba(255,255,255,.14)",
+              border: "1px solid rgba(255,255,255,.3)",
+              borderRadius: 12,
+              padding: "11px 14px",
+              fontSize: 13.5,
+              fontWeight: 700,
+              color: "#fff",
+              cursor: "pointer",
+            }}
+            title="Cash out USDC to your bank or card"
+          >
+            Cash out
+          </button>
+        </div>
       </div>
     </div>
   );

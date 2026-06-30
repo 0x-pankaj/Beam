@@ -9,6 +9,7 @@ import {
 import { campaignRaisedUsd, REASON_META, type BeamLink } from "@/lib/links";
 import { usd } from "@/lib/format";
 import { arbiscanTokenTxns, arbiscanTx, universalxActivity } from "@/lib/chains";
+import { offRampUrl } from "@/lib/ramp";
 import { GoogleGlyph } from "@/components/GoogleGlyph";
 import { SettleAnimation } from "@/components/SettleAnimation";
 
@@ -266,6 +267,16 @@ export default function ClaimClient({ id }: { id: string }) {
           gasless={lastSettle?.freeGasFee}
         />
         {proofLinks}
+        {!isRequest && !isSplit && address && (
+          <a
+            className="btn btn-primary mt-1"
+            href={offRampUrl(address)}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Cash out to your bank →
+          </a>
+        )}
       </main>
     );
   }
