@@ -9,7 +9,9 @@ import {
 } from "@/providers/UniversalAccountProvider";
 import {
   campaignRaisedUsd,
+  daysWaiting,
   isCampaign,
+  isExpired,
   REASON_META,
   type BeamLink,
   type Direction,
@@ -286,6 +288,7 @@ function Dashboard() {
   const [toast, setToast] = useState<string | null>(null);
   const [settle, setSettle] = useState<SettleResult | null>(null);
   const [copiedAddr, setCopiedAddr] = useState(false);
+  const [acctOpen, setAcctOpen] = useState(false);
   const [mode, setMode] = useState<Direction>("send");
 
   const copyAddress = () => {
@@ -427,6 +430,10 @@ function Dashboard() {
     }
   };
 
+  // Unclaimed send links past the expiry window — money you can pull back.
+  const reclaimable = links.filter((l) => isExpired(l));
+  const reclaimableUsd = reclaimable.reduce((s, l) => s + Number(l.amountUsd), 0);
+
   const initials = (email ?? "?").slice(0, 1).toUpperCase();
   const balanceStr = loading ? "…" : usd(totalUsd);
 
@@ -554,8 +561,103 @@ function Dashboard() {
             <BeamMark size={30} radius={9} />
             <span style={{ fontSize: 17, fontWeight: 800, letterSpacing: "-.02em" }}>Beam</span>
           </div>
-          <Avatar initials={initials} size={34} />
+          <button
+            onClick={() => setAcctOpen(true)}
+            style={{ background: "none", border: "none", padding: 0, cursor: "pointer" }}
+            title="Account"
+            aria-label="Account menu"
+          >
+            <Avatar initials={initials} size={34} />
+          </button>
         </header>
+
+        {/* MOBILE ACCOUNT SHEET — who's logged in + log out */}
+        {acctOpen && (
+          <div
+            className="show-mobile"
+            onClick={() => setAcctOpen(false)}
+            style={{
+              position: "fixed",
+              inset: 0,
+              zIndex: 70,
+              background: "rgba(16,21,18,.45)",
+              backdropFilter: "blur(2px)",
+            }}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                position: "absolute",
+                top: 62,
+                right: 14,
+                left: 14,
+                background: "#fff",
+                borderRadius: 18,
+                padding: 16,
+                boxShadow: "0 24px 48px -18px rgba(16,21,18,.4)",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
+                <Avatar initials={initials} size={40} />
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <p style={{ margin: 0, fontSize: 11, fontWeight: 600, color: "#9aa69d" }}>
+                    Signed in as
+                  </p>
+                  <p
+                    style={{
+                      margin: "1px 0 0",
+                      fontSize: 14,
+                      fontWeight: 700,
+                      color: "#10211a",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {email ?? short(address)}
+                  </p>
+                  {email && address && (
+                    <p
+                      style={{
+                        margin: "1px 0 0",
+                        fontSize: 11,
+                        color: "#9aa69d",
+                        fontFamily: "var(--font-jetbrains-mono), monospace",
+                      }}
+                    >
+                      {short(address)}
+                    </p>
+                  )}
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setAcctOpen(false);
+                  logout();
+                }}
+                style={{
+                  marginTop: 14,
+                  width: "100%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
+                  background: "var(--field)",
+                  border: "1px solid var(--line)",
+                  borderRadius: 12,
+                  padding: 12,
+                  fontSize: 14,
+                  fontWeight: 700,
+                  color: "#9a3a3a",
+                  cursor: "pointer",
+                }}
+              >
+                <LogoutIcon size={16} />
+                Log out
+              </button>
+            </div>
+          </div>
+        )}
 
         <div
           style={{
@@ -631,6 +733,39 @@ function Dashboard() {
                     {sweeping ? "Moving…" : "Move to Arbitrum"}
                   </button>
                 </div>
+              )}
+
+              {reclaimable.length > 0 && (
+                <button
+                  onClick={() => scrollToId("activity")}
+                  className="animate-pop"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 12,
+                    textAlign: "left",
+                    width: "100%",
+                    background: "#fdf0f0",
+                    border: "1px solid #f1cccc",
+                    borderRadius: 16,
+                    padding: "13px 15px",
+                    cursor: "pointer",
+                  }}
+                >
+                  <span style={{ fontSize: 22 }}>⏰</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#9a3a3a" }}>
+                      {usd(reclaimableUsd)} in {reclaimable.length} unclaimed link
+                      {reclaimable.length > 1 ? "s" : ""}
+                    </p>
+                    <p style={{ margin: "1px 0 0", fontSize: 12, color: "#bf6a6a" }}>
+                      Nobody claimed these — reclaim your money below.
+                    </p>
+                  </div>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: "#9a3a3a", whiteSpace: "nowrap" }}>
+                    View →
+                  </span>
+                </button>
               )}
 
               <QuickActions
@@ -1672,13 +1807,16 @@ function ActivityRow({
   onRefund: (link: BeamLink) => void;
 }) {
   const ic = ACT_ICON[l.direction] ?? ACT_ICON.send;
+  const expired = isExpired(l);
   const sub =
     l.status === "pending"
       ? l.direction === "request"
         ? "Waiting for payment"
         : "Waiting to be claimed"
       : l.status === "funded"
-        ? "🔒 Funded in escrow — waiting to be claimed"
+        ? expired
+          ? `⏰ Unclaimed for ${daysWaiting(l)} days — reclaim it`
+          : "🔒 Funded in escrow — waiting to be claimed"
         : l.status === "claiming"
           ? `${l.claimantEmail ?? short(l.claimantAddress)} is ${l.direction === "request" ? "paying" : "claiming"}`
           : l.status === "sending"
@@ -1760,19 +1898,19 @@ function ActivityRow({
             onClick={() => onRefund(l)}
             disabled={payingId === l.id}
             style={{
-              background: "var(--field)",
-              border: "1px solid var(--line)",
+              background: expired ? "var(--ac)" : "var(--field)",
+              border: expired ? "none" : "1px solid var(--line)",
               borderRadius: 11,
               padding: "9px 14px",
               fontSize: 13,
               fontWeight: 700,
-              color: "#3a453e",
+              color: expired ? "#fff" : "#3a453e",
               cursor: payingId === l.id ? "default" : "pointer",
               whiteSpace: "nowrap",
               opacity: payingId === l.id ? 0.6 : 1,
             }}
           >
-            {payingId === l.id ? "…" : "Refund"}
+            {payingId === l.id ? "…" : expired ? `Reclaim ${usd(l.amountUsd)}` : "Refund"}
           </button>
         ) : (
           <Badge tone={l.status === "paid" ? "success" : "muted"}>

@@ -93,6 +93,19 @@ export type BeamLink = {
   paidAt?: number;
 };
 
+/** A funded send link goes stale after this long unclaimed — sender should reclaim. */
+export const LINK_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+/** Soft expiry: a funded send link sitting unclaimed past the window. */
+export const isExpired = (link: BeamLink, now = Date.now()): boolean =>
+  link.direction === "send" &&
+  link.status === "funded" &&
+  now - link.createdAt > LINK_EXPIRY_MS;
+
+/** Whole days a funded send link has been waiting to be claimed. */
+export const daysWaiting = (link: BeamLink, now = Date.now()): number =>
+  Math.floor((now - link.createdAt) / (24 * 60 * 60 * 1000));
+
 /** Total collected from self-reported contributions (fallback when unverified). */
 export const collectedUsd = (link: BeamLink): number =>
   (link.contributions ?? []).reduce((s, c) => s + Number(c.amountUsd), 0);
