@@ -271,10 +271,18 @@ function Landing() {
 
 function Dashboard() {
   const { address, email, logout } = useMagic();
-  const { totalUsd, primaryAssets, loading, refreshBalance, sendUsdcToArbitrum } =
-    useUniversalAccount();
+  const {
+    totalUsd,
+    primaryAssets,
+    loading,
+    refreshBalance,
+    sendUsdcToArbitrum,
+    offArbitrumUsdc,
+    consolidateToArbitrum,
+  } = useUniversalAccount();
   const [links, setLinks] = useState<BeamLink[]>([]);
   const [payingId, setPayingId] = useState<string | null>(null);
+  const [sweeping, setSweeping] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [settle, setSettle] = useState<SettleResult | null>(null);
   const [copiedAddr, setCopiedAddr] = useState(false);
@@ -340,6 +348,24 @@ function Dashboard() {
       }
     } finally {
       setPayingId(null);
+    }
+  };
+
+  // Sweep inbound USDC that landed on other chains onto Arbitrum (one tap).
+  const consolidate = async () => {
+    setSweeping(true);
+    setToast(null);
+    setSettle(null);
+    try {
+      const moved = offArbitrumUsdc;
+      const res = await consolidateToArbitrum();
+      setToast(`Moved ${usd(moved)} to Arbitrum`);
+      setSettle(res);
+      await refreshBalance();
+    } catch (e) {
+      setToast(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSweeping(false);
     }
   };
 
@@ -536,6 +562,50 @@ function Dashboard() {
                 copied={copiedAddr}
                 onCopy={copyAddress}
               />
+
+              {offArbitrumUsdc >= 0.5 && (
+                <div
+                  className="animate-pop"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 12,
+                    background: "#fff7ec",
+                    border: "1px solid #f3dcae",
+                    borderRadius: 16,
+                    padding: "13px 15px",
+                  }}
+                >
+                  <span style={{ fontSize: 22 }}>💸</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#7a5a18" }}>
+                      {usd(offArbitrumUsdc)} arrived on another chain
+                    </p>
+                    <p style={{ margin: "1px 0 0", fontSize: 12, color: "#9a7e3f" }}>
+                      Move it to Arbitrum to settle in one place.
+                    </p>
+                  </div>
+                  <button
+                    onClick={consolidate}
+                    disabled={sweeping}
+                    style={{
+                      flexShrink: 0,
+                      background: "var(--ac)",
+                      border: "none",
+                      borderRadius: 11,
+                      padding: "9px 14px",
+                      fontSize: 13,
+                      fontWeight: 700,
+                      color: "#fff",
+                      cursor: sweeping ? "default" : "pointer",
+                      opacity: sweeping ? 0.6 : 1,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {sweeping ? "Moving…" : "Move to Arbitrum"}
+                  </button>
+                </div>
+              )}
 
               <QuickActions
                 onMode={(m) => {

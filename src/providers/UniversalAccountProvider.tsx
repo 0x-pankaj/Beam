@@ -66,6 +66,10 @@ type UAContextType = {
   ensureDelegated: () => Promise<void>;
   /** Move `amount` USDC cross-chain so it settles on Arbitrum to `receiver`. */
   sendUsdcToArbitrum: (amount: string, receiver: string) => Promise<SettleResult>;
+  /** USDC the user holds OFF Arbitrum (e.g. inbound deposits on Base) — sweepable. */
+  offArbitrumUsdc: number;
+  /** Sweep all off-Arbitrum USDC onto Arbitrum (a UA self-transfer). */
+  consolidateToArbitrum: () => Promise<SettleResult>;
 };
 
 const UAContext = createContext<UAContextType>({
@@ -77,6 +81,12 @@ const UAContext = createContext<UAContextType>({
   refreshBalance: async () => {},
   ensureDelegated: async () => {},
   sendUsdcToArbitrum: async () => ({
+    transactionId: "",
+    freeGasFee: false,
+    sourceChainIds: [],
+  }),
+  offArbitrumUsdc: 0,
+  consolidateToArbitrum: async () => ({
     transactionId: "",
     freeGasFee: false,
     sourceChainIds: [],
@@ -258,6 +268,28 @@ export const UniversalAccountProvider = ({
     [universalAccount, magic, address, signEip7702Auth, refreshBalance],
   );
 
+  // USDC sitting on chains other than Arbitrum (e.g. someone paid the Receive QR
+  // from Base) — the part a sweep would consolidate onto the settlement chain.
+  const offArbitrumUsdc = useMemo(() => {
+    if (!primaryAssets?.assets) return 0;
+    let sum = 0;
+    for (const a of primaryAssets.assets) {
+      if (String(a.tokenType).toLowerCase() !== "usdc") continue;
+      for (const c of a.chainAggregation ?? []) {
+        if (c.token.chainId !== SETTLEMENT_CHAIN_ID) sum += Number(c.amount) || 0;
+      }
+    }
+    return sum;
+  }, [primaryAssets]);
+
+  // Sweep: move off-Arbitrum USDC to the user's own address on Arbitrum. UA
+  // sources the funds cross-chain, so the tokens physically consolidate.
+  const consolidateToArbitrum = useCallback(async () => {
+    if (!address) throw new Error("Account not ready");
+    if (offArbitrumUsdc <= 0) throw new Error("Nothing to move to Arbitrum");
+    return sendUsdcToArbitrum(offArbitrumUsdc.toFixed(6), address);
+  }, [address, offArbitrumUsdc, sendUsdcToArbitrum]);
+
   const value = useMemo(
     () => ({
       universalAccount,
@@ -268,6 +300,8 @@ export const UniversalAccountProvider = ({
       refreshBalance,
       ensureDelegated,
       sendUsdcToArbitrum,
+      offArbitrumUsdc,
+      consolidateToArbitrum,
     }),
     [
       universalAccount,
@@ -277,6 +311,8 @@ export const UniversalAccountProvider = ({
       refreshBalance,
       ensureDelegated,
       sendUsdcToArbitrum,
+      offArbitrumUsdc,
+      consolidateToArbitrum,
     ],
   );
 
