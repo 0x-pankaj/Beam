@@ -160,28 +160,25 @@ Every link carries a **direction**:
 - **fund** — open crowdfunding: many backers pay any amount toward a goal; stays open (goal is a target, not a cap).
 - **product** — a reusable fixed-price listing: each buyer pays the price, then unlocks the content (`/unlock` is gated to addresses that paid; `unlockUrl` is never returned by public GETs).
 
-For a **send** link, funds move only on the sender's action — the recipient just claims. Status transitions are coordinated through the link store so the two parties' screens stay in sync in real time.
+For a **send** link, Beam uses **real escrow**: the money is locked the moment the link is created, and the recipient is paid out **automatically** the instant they claim — it no longer depends on the sender returning online. Funds settle to a Beam-controlled relayer wallet on Arbitrum at create-time, and the server pays the recipient from it on claim.
 
 ```
-Sender (Alice)                      Link store                    Recipient (Bob)
-──────────────                      ──────────                    ───────────────
+Sender (Alice)                      Link store / Relayer            Recipient (Bob)
+──────────────                      ────────────────────            ───────────────
 create $50 link ───────────────────▶ pending
+  └─ UA cross-chain deposit ───────▶ relayer wallet (Arbitrum)
+     /fund verifies escrow balance ▶ funded  (money LOCKED)
                                        │  ◀──── opens link, logs in (Magic)
-                                     claiming ◀──── announces claim (his address)
-sees "Bob is claiming"
-taps "Send $50"
-  ├─ mark sending ─────────────────▶ sending ────▶ "settling on Arbitrum…"
-  ├─ UA cross-chain transfer
-  │    → settles USDC on Arbitrum
-  └─ mark paid (txId) ─────────────▶ paid ───────▶ "🎉 $50 received"
+                                       │  ◀──── /claim records his address
+     relayer pays Bob (Arbitrum) ────▶ sending → paid ────────────▶ "🎉 $50 received"
 ```
 
-- `pending` → link created, not yet opened.
-- `claiming` → recipient logged in; address captured for the sender.
-- `sending` → sender approved; cross-chain settlement in flight.
-- `paid` → settled on Arbitrum; both sides show success + settlement link.
+- `pending` → link created, deposit not yet confirmed.
+- `funded` → escrow holds the money on Arbitrum; payout to the claimant is **guaranteed**. (Unclaimed? The sender can `/refund` it back.)
+- `sending` → relayer payout in flight.
+- `paid` → settled on Arbitrum to the recipient; both sides show success + a real payout tx on Arbiscan.
 
-Polling (3–4s) on both screens keeps the demo's two windows in lockstep.
+Escrow deposits are verified **on-chain** by reconciling the relayer's real USDC balance against a reserved-amount ledger — a link can only be marked `funded` once the money has actually landed. When no relayer is configured, Beam falls back to the legacy sender-pays-on-claim flow. Polling (3–4s) on both screens keeps the demo's two windows in lockstep.
 
 ## Tech stack
 
@@ -270,6 +267,8 @@ Copy `.env.example` → `.env.local` and fill in:
 | `NEXT_PUBLIC_MAGIC_API_KEY` | [Magic dashboard](https://dashboard.magic.link/) → Publishable API key (`pk_live_…`) |
 | `NEXT_PUBLIC_GOOGLE_CLIENT_ID` | Google Cloud → OAuth client (must match the ID in Magic's Google config). *Optional* — app falls back to email-only when unset. |
 | `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` | Upstash (or Vercel KV's `KV_REST_API_URL` / `KV_REST_API_TOKEN`). *Optional locally* — falls back to in-memory. Required in production. |
+| `BEAM_RELAYER_PRIVATE_KEY` | The escrow holding wallet that makes "send" links guaranteed. Fund it with a little ETH (gas) + USDC on **Arbitrum**. **Server-only** — never prefix with `NEXT_PUBLIC_`. *Optional* — without it, send links fall back to sender-pays-on-claim. |
+| `ARBITRUM_RPC_URL` | *Optional* — Arbitrum RPC for escrow verification + payouts (defaults to `https://arb1.arbitrum.io/rpc`). |
 | `RESEND_API_KEY` / `RESEND_FROM` | [Resend](https://resend.com) — *optional*, enables the "email it to them" field. The app works without it. |
 
 > **Note:** Universal Accounts cross-chain liquidity is **mainnet-only**, so transfers move real USDC. Keep demo amounts small.
@@ -280,6 +279,7 @@ Beam deploys to Vercel as-is. Three things to configure for a working production
 
 1. **Environment variables** — set all of the above in Vercel → Settings → Environment Variables (the `NEXT_PUBLIC_*` ones and the Upstash pair). The Upstash vars are **server-side secrets** — do not prefix them with `NEXT_PUBLIC_`.
 2. **Persistent store** — connect an Upstash Redis (or Vercel KV) store. Serverless instances don't share memory, so the link store must be external. Verify with `GET /api/health` → `"persistentStore": true`.
+   - **Escrow relayer** (for guaranteed send links) — set `BEAM_RELAYER_PRIVATE_KEY` and fund that wallet with a little ETH (gas) + USDC on Arbitrum. The reserved-amount ledger lives in the same Redis store, so a persistent store is required for escrow in production. Verify the deposit address with `GET /api/relayer`.
 3. **Origin allowlists** — add your deployed domain to:
    - Particle dashboard → Web app → **Domain**
    - Google Cloud → OAuth client → **Authorized JavaScript origins** (and publish the consent screen)
