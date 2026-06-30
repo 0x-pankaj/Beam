@@ -6,7 +6,7 @@ import {
   useUniversalAccount,
   type SettleResult,
 } from "@/providers/UniversalAccountProvider";
-import { collectedUsd, REASON_META, type BeamLink } from "@/lib/links";
+import { campaignRaisedUsd, REASON_META, type BeamLink } from "@/lib/links";
 import { usd } from "@/lib/format";
 import { arbiscanTokenTxns, arbiscanTx, universalxActivity } from "@/lib/chains";
 import { GoogleGlyph } from "@/components/GoogleGlyph";
@@ -112,11 +112,13 @@ export default function ClaimClient({ id }: { id: string }) {
       }
     });
 
-  // SPLIT / FUND: the opener contributes an amount to the creator; many can pay.
+  // SPLIT / FUND: the opener contributes an amount; many can pay. Funds go to the
+  // per-campaign escrow (verifiable total), or directly to the creator if escrow
+  // isn't configured.
   const contribute = (amountUsd: string) =>
     run(async () => {
       if (!link || !address || !amountUsd || Number(amountUsd) <= 0) return;
-      const res = await sendUsdcToArbitrum(amountUsd, link.senderAddress);
+      const res = await sendUsdcToArbitrum(amountUsd, link.escrowAddress ?? link.senderAddress);
       setLastSettle(res);
       await fetch(`/api/links/${id}/contribute`, {
         method: "POST",
@@ -131,7 +133,7 @@ export default function ClaimClient({ id }: { id: string }) {
   const buyProduct = () =>
     run(async () => {
       if (!link || !address) return;
-      const res = await sendUsdcToArbitrum(link.amountUsd, link.senderAddress);
+      const res = await sendUsdcToArbitrum(link.amountUsd, link.escrowAddress ?? link.senderAddress);
       setLastSettle(res);
       const r = await fetch(`/api/links/${id}/contribute`, {
         method: "POST",
@@ -172,7 +174,7 @@ export default function ClaimClient({ id }: { id: string }) {
   const isFund = direction === "fund";
   const isProduct = direction === "product";
   const total = Number(link.amountUsd);
-  const collected = collectedUsd(link);
+  const collected = campaignRaisedUsd(link);
   const remaining = Math.max(0, total - collected);
   const suggestedShare = link.splitWays
     ? Math.min(remaining || total / link.splitWays, total / link.splitWays)
@@ -321,6 +323,7 @@ export default function ClaimClient({ id }: { id: string }) {
             <p className="mt-1 text-xs text-[var(--muted)]">
               {usd(collected)} {isFund ? "raised of" : "of"} {usd(total)}
               {isFund ? " goal" : ""} · {link.contributions?.length ?? 0} paid
+              {link.verifiedUsd != null ? " · ✓ verified on-chain" : ""}
             </p>
           </div>
         )}

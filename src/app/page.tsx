@@ -8,7 +8,7 @@ import {
   type SettleResult,
 } from "@/providers/UniversalAccountProvider";
 import {
-  collectedUsd,
+  campaignRaisedUsd,
   isCampaign,
   REASON_META,
   type BeamLink,
@@ -341,6 +341,22 @@ function Dashboard() {
     }
   };
 
+  // Collect a campaign's verified escrow balance to the creator's account.
+  const collect = async (link: BeamLink) => {
+    setPayingId(link.id);
+    setToast(null);
+    try {
+      const res = await fetch(`/api/links/${link.id}/collect`, { method: "POST" });
+      const d = await res.json().catch(() => ({}));
+      setToast(res.ok ? `Collected ${usd(d.amountUsd ?? 0)} — settled on Arbitrum` : d.error || "Collect failed");
+      await Promise.all([loadLinks(), refreshBalance()]);
+    } catch (e) {
+      setToast(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPayingId(null);
+    }
+  };
+
   // Reclaim an unclaimed, funded escrow link — money returns to the sender.
   const refund = async (link: BeamLink) => {
     setPayingId(link.id);
@@ -560,6 +576,7 @@ function Dashboard() {
                 payingId={payingId}
                 onPay={pay}
                 onRefund={refund}
+                onCollect={collect}
               />
               <HandleCard address={address!} />
             </div>
@@ -1457,11 +1474,13 @@ function Activity({
   payingId,
   onPay,
   onRefund,
+  onCollect,
 }: {
   links: BeamLink[];
   payingId: string | null;
   onPay: (link: BeamLink) => void;
   onRefund: (link: BeamLink) => void;
+  onCollect: (link: BeamLink) => void;
 }) {
   return (
     <div id="activity" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -1485,7 +1504,12 @@ function Activity({
       ) : (
         links.map((l) =>
           isCampaign(l.direction) ? (
-            <CampaignRow key={l.id} link={l} />
+            <CampaignRow
+              key={l.id}
+              link={l}
+              onCollect={onCollect}
+              busy={payingId === l.id}
+            />
           ) : (
             <ActivityRow
               key={l.id}
@@ -1638,9 +1662,18 @@ function ActivityRow({
 }
 
 /** Activity row for a campaign (split / fund / product) — progress + counts. */
-function CampaignRow({ link }: { link: BeamLink }) {
+function CampaignRow({
+  link,
+  onCollect,
+  busy,
+}: {
+  link: BeamLink;
+  onCollect: (link: BeamLink) => void;
+  busy: boolean;
+}) {
   const target = Number(link.amountUsd);
-  const collected = collectedUsd(link);
+  const collected = campaignRaisedUsd(link);
+  const canCollect = (link.verifiedUsd ?? 0) > 0.009;
   const n = link.contributions?.length ?? 0;
   const isProduct = link.direction === "product";
   const isFund = link.direction === "fund";
@@ -1718,6 +1751,27 @@ function CampaignRow({ link }: { link: BeamLink }) {
             style={{ height: "100%", borderRadius: 999, background: "var(--ac)", width: `${pct}%` }}
           />
         </div>
+      )}
+      {canCollect && (
+        <button
+          onClick={() => onCollect(link)}
+          disabled={busy}
+          style={{
+            marginTop: 12,
+            width: "100%",
+            background: "var(--ac)",
+            border: "none",
+            borderRadius: 11,
+            padding: "9px 14px",
+            fontSize: 13,
+            fontWeight: 700,
+            color: "#fff",
+            cursor: busy ? "default" : "pointer",
+            opacity: busy ? 0.6 : 1,
+          }}
+        >
+          {busy ? "Collecting…" : `Collect ${usd(link.verifiedUsd ?? 0)} to your account`}
+        </button>
       )}
     </div>
   );

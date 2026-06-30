@@ -83,13 +83,28 @@ export type BeamLink = {
   splitWays?: number;
   /** Campaign payments collected so far (split/fund/product). */
   contributions?: Contribution[];
+  /** Campaign escrow: last verified on-chain USDC balance of the deposit address. */
+  verifiedUsd?: number;
+  /** Campaign escrow: total already swept out to the creator. */
+  withdrawnUsd?: number;
+  /** Response-only: the per-campaign escrow deposit address (derived, not stored). */
+  escrowAddress?: string;
   createdAt: number;
   paidAt?: number;
 };
 
-/** Total collected across all contributions. */
+/** Total collected from self-reported contributions (fallback when unverified). */
 export const collectedUsd = (link: BeamLink): number =>
   (link.contributions ?? []).reduce((s, c) => s + Number(c.amountUsd), 0);
+
+/**
+ * The amount a campaign has raised. Prefers the on-chain VERIFIED balance
+ * (current escrow balance + already-withdrawn) over self-reported sums.
+ */
+export const campaignRaisedUsd = (link: BeamLink): number =>
+  link.verifiedUsd != null
+    ? link.verifiedUsd + (link.withdrawnUsd ?? 0)
+    : collectedUsd(link);
 
 /** Has this address already paid toward a link (case-insensitive). */
 export const hasContributed = (link: BeamLink, address: string): boolean =>
@@ -189,20 +204,12 @@ function buildLink(input: CreateInput): BeamLink {
 }
 
 /**
- * Append a contribution. A "split" closes (paid) once the total fills; "fund"
- * and "product" stay open indefinitely (goal/price are targets, not caps).
+ * Append a contribution. The close/fill decision is made by the contribute
+ * route against the VERIFIED on-chain escrow balance (or self-reported sums when
+ * no relayer is configured), so this just records the payment.
  */
 function applyContribution(link: BeamLink, c: Contribution): BeamLink {
-  const contributions = [...(link.contributions ?? []), c];
-  const collected = contributions.reduce((s, x) => s + Number(x.amountUsd), 0);
-  const filled =
-    link.direction === "split" && collected + 1e-9 >= Number(link.amountUsd);
-  return {
-    ...link,
-    contributions,
-    status: filled ? "paid" : link.status,
-    paidAt: filled ? Date.now() : link.paidAt,
-  };
+  return { ...link, contributions: [...(link.contributions ?? []), c] };
 }
 
 /* ───────────────────────────── In-memory backend ────────────────────────── */

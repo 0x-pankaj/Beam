@@ -16,7 +16,15 @@
  * var, so Next never includes it in the client bundle.
  */
 
-import { JsonRpcProvider, Wallet, Contract, parseUnits } from "ethers";
+import {
+  JsonRpcProvider,
+  Wallet,
+  Contract,
+  parseUnits,
+  parseEther,
+  keccak256,
+  toUtf8Bytes,
+} from "ethers";
 import { SETTLEMENT_USDC } from "./chains";
 import { USDC_DECIMALS, usdcBalanceOf } from "./arbitrum";
 
@@ -27,14 +35,29 @@ const ERC20_ABI = [
   "function transfer(address to, uint256 amount) returns (bool)",
 ] as const;
 
+let _provider: JsonRpcProvider | null = null;
+function provider(): JsonRpcProvider {
+  if (!_provider)
+    _provider = new JsonRpcProvider(RPC_URL, undefined, { staticNetwork: true });
+  return _provider;
+}
+
 let _wallet: Wallet | null = null;
 function wallet(): Wallet {
   if (!KEY) throw new Error("relayer not configured (BEAM_RELAYER_PRIVATE_KEY)");
-  if (!_wallet) {
-    const provider = new JsonRpcProvider(RPC_URL, undefined, { staticNetwork: true });
-    _wallet = new Wallet(KEY, provider);
-  }
+  if (!_wallet) _wallet = new Wallet(KEY, provider());
   return _wallet;
+}
+
+/**
+ * A unique escrow wallet per campaign, derived deterministically from the master
+ * key so each campaign gets its OWN deposit address — its on-chain USDC balance
+ * is then a provable, isolated "amount raised". No extra config: the same
+ * BEAM_RELAYER_PRIVATE_KEY is the root for every derived campaign wallet.
+ */
+function campaignWallet(seed: string): Wallet {
+  const childKey = keccak256(toUtf8Bytes(`${KEY}:campaign:${seed}`));
+  return new Wallet(childKey, provider());
 }
 
 /** Whether the relayer/escrow is configured on this deployment. */
@@ -77,5 +100,56 @@ export async function payoutUsdc(
     return { ok: true, txHash: tx.hash };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "payout failed" };
+  }
+}
+
+/* ─────────────────────────── Per-campaign escrow ─────────────────────────── */
+
+/** The deposit address contributors pay into for a campaign. Null if unconfigured. */
+export function campaignDepositAddress(seed: string): string | null {
+  if (!KEY) return null;
+  return campaignWallet(seed).address;
+}
+
+/** The real, on-chain USDC balance of a campaign's escrow — the verified total raised. */
+export async function campaignBalanceUsd(seed: string): Promise<number> {
+  if (!KEY) return 0;
+  return usdcBalanceOf(campaignWallet(seed).address);
+}
+
+/**
+ * Sweep a campaign's escrow balance to the creator. The derived wallet holds no
+ * ETH, so we top it up with a little gas from the master first, then forward the
+ * USDC. Returns the payout tx and the amount actually swept.
+ */
+export async function sweepCampaignTo(
+  seed: string,
+  to: string,
+): Promise<PayoutResult & { amountUsd?: number }> {
+  if (!KEY) return { ok: false, error: "relayer not configured" };
+  try {
+    const child = campaignWallet(seed);
+    const amountUsd = await usdcBalanceOf(child.address);
+    if (amountUsd <= 0) return { ok: false, error: "nothing to collect" };
+
+    // Ensure the child can pay gas — top it up from the master if needed.
+    const gasBal = await provider().getBalance(child.address);
+    if (gasBal < parseEther("0.00004")) {
+      const fund = await wallet().sendTransaction({
+        to: child.address,
+        value: parseEther("0.0001"),
+      });
+      await fund.wait(1);
+    }
+
+    const usdc = new Contract(SETTLEMENT_USDC, ERC20_ABI, child);
+    const amount = parseUnits(amountUsd.toFixed(USDC_DECIMALS), USDC_DECIMALS);
+    const tx = await usdc.transfer(to, amount);
+    const receipt = await tx.wait(1);
+    if (!receipt || receipt.status !== 1)
+      return { ok: false, txHash: tx.hash, error: "sweep reverted" };
+    return { ok: true, txHash: tx.hash, amountUsd };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "sweep failed" };
   }
 }
