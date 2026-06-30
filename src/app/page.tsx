@@ -341,6 +341,25 @@ function Dashboard() {
     }
   };
 
+  // Reclaim an unclaimed, funded escrow link — money returns to the sender.
+  const refund = async (link: BeamLink) => {
+    setPayingId(link.id);
+    setToast(null);
+    try {
+      const res = await fetch(`/api/links/${link.id}/refund`, { method: "POST" });
+      if (res.ok) setToast(`Refunded ${usd(link.amountUsd)} to you`);
+      else {
+        const e = await res.json().catch(() => ({}));
+        setToast(e.error || "Refund failed");
+      }
+      await Promise.all([loadLinks(), refreshBalance()]);
+    } catch (e) {
+      setToast(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPayingId(null);
+    }
+  };
+
   const initials = (email ?? "?").slice(0, 1).toUpperCase();
   const balanceStr = loading ? "…" : usd(totalUsd);
 
@@ -510,6 +529,7 @@ function Dashboard() {
               <LinkForm
                 address={address!}
                 senderName={email ?? undefined}
+                senderEmail={email ?? undefined}
                 onCreated={loadLinks}
                 mode={mode}
                 setMode={setMode}
@@ -535,7 +555,12 @@ function Dashboard() {
                 gap: 18,
               }}
             >
-              <Activity links={links} payingId={payingId} onPay={pay} />
+              <Activity
+                links={links}
+                payingId={payingId}
+                onPay={pay}
+                onRefund={refund}
+              />
               <HandleCard address={address!} />
             </div>
           </div>
@@ -837,16 +862,19 @@ const REASON_ICON: Record<Exclude<Reason, "none">, React.ReactNode> = {
 function LinkForm({
   address,
   senderName,
+  senderEmail,
   onCreated,
   mode,
   setMode,
 }: {
   address: string;
   senderName?: string;
+  senderEmail?: string;
   onCreated: () => void;
   mode: Direction;
   setMode: (m: Direction) => void;
 }) {
+  const { sendUsdcToArbitrum } = useUniversalAccount();
   const [amount, setAmount] = useState("");
   const [ways, setWays] = useState("");
   const [title, setTitle] = useState("");
@@ -855,6 +883,8 @@ function LinkForm({
   const [note, setNote] = useState("");
   const [recipientEmail, setRecipientEmail] = useState("");
   const [busy, setBusy] = useState(false);
+  const [funding, setFunding] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState<BeamLink | null>(null);
   const [copied, setCopied] = useState(false);
 
@@ -867,6 +897,7 @@ function LinkForm({
 
   const create = async () => {
     setBusy(true);
+    setError(null);
     try {
       const res = await fetch("/api/links", {
         method: "POST",
@@ -880,11 +911,37 @@ function LinkForm({
           unlockUrl: isProduct ? unlockUrl || undefined : undefined,
           senderAddress: address,
           senderName,
+          senderEmail,
           splitWays: isSplit ? Number(ways) || undefined : undefined,
         }),
       });
       if (res.ok) {
         const link: BeamLink = await res.json();
+
+        // "send" = escrow: lock the funds NOW so the recipient is guaranteed to
+        // get paid, with no need for the sender to return online. Falls back to
+        // the legacy sender-pays-on-claim flow if no relayer is configured.
+        if (mode === "send") {
+          const relayer = await fetch("/api/relayer")
+            .then((r) => r.json())
+            .catch(() => null);
+          if (relayer?.configured && relayer.address) {
+            setFunding("Locking funds in escrow…");
+            const dep = await sendUsdcToArbitrum(amount, relayer.address);
+            setFunding("Confirming deposit…");
+            const fres = await fetch(`/api/links/${link.id}/fund`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ txId: dep.transactionId }),
+            });
+            if (!fres.ok) {
+              const e = await fres.json().catch(() => ({}));
+              throw new Error(e.error || "Could not lock funds in escrow");
+            }
+            link.status = "funded";
+          }
+        }
+
         setCreated(link);
         onCreated();
         if (recipientEmail) {
@@ -901,13 +958,17 @@ function LinkForm({
           }).catch(() => {});
         }
       }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
+      setFunding(null);
     }
   };
 
   const reset = () => {
     setCreated(null);
+    setError(null);
     setAmount("");
     setWays("");
     setTitle("");
@@ -967,6 +1028,25 @@ function LinkForm({
           {usd(created.amountUsd)}
           {d === "product" ? " each" : d === "fund" ? " goal" : ""}
         </p>
+        {d === "send" && created.status === "funded" && (
+          <p
+            style={{
+              margin: "-10px 0 16px",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              fontSize: 12.5,
+              fontWeight: 600,
+              color: "#1e7d54",
+              background: "#e7f6ee",
+              border: "1px solid #bde6cf",
+              borderRadius: 999,
+              padding: "5px 11px",
+            }}
+          >
+            🔒 Funded in escrow — payout guaranteed on claim
+          </p>
+        )}
         <div style={{ display: "flex", flexWrap: "wrap", gap: 20, alignItems: "center" }}>
           <Qr url={url} size={147} />
           <div style={{ flex: 1, minWidth: 200, display: "flex", flexDirection: "column", gap: 10 }}>
@@ -1012,17 +1092,21 @@ function LinkForm({
     isFund ? "goal" : isProduct ? "each" : isSplit && Number(ways) >= 2 && amount
       ? `${usd(amtNum / Number(ways))} ea`
       : null;
-  const createLabel = busy
-    ? "Creating…"
-    : mode === "request"
-      ? "Create request link"
-      : isSplit
-        ? "Create split link"
-        : isFund
-          ? "Launch campaign"
-          : isProduct
-            ? "List product"
-            : "Create payment link";
+  const createLabel = funding
+    ? funding
+    : busy
+      ? "Creating…"
+      : mode === "request"
+        ? "Create request link"
+        : isSplit
+          ? "Create split link"
+          : isFund
+            ? "Launch campaign"
+            : isProduct
+              ? "List product"
+              : mode === "send"
+                ? "Lock funds & create link"
+                : "Create payment link";
 
   return (
     <div id="create" className="card">
@@ -1195,6 +1279,18 @@ function LinkForm({
       >
         {createLabel}
       </button>
+
+      {mode === "send" && (
+        <p style={{ margin: "10px 2px 0", fontSize: 12, color: "#79857c", textAlign: "center" }}>
+          Funds are locked in escrow now — the recipient is guaranteed to get
+          paid the moment they claim.
+        </p>
+      )}
+      {error && (
+        <p style={{ margin: "10px 2px 0", fontSize: 12.5, color: "#c0392b", textAlign: "center" }}>
+          {error}
+        </p>
+      )}
     </div>
   );
 }
@@ -1354,10 +1450,12 @@ function Activity({
   links,
   payingId,
   onPay,
+  onRefund,
 }: {
   links: BeamLink[];
   payingId: string | null;
   onPay: (link: BeamLink) => void;
+  onRefund: (link: BeamLink) => void;
 }) {
   return (
     <div id="activity" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -1383,7 +1481,13 @@ function Activity({
           isCampaign(l.direction) ? (
             <CampaignRow key={l.id} link={l} />
           ) : (
-            <ActivityRow key={l.id} link={l} payingId={payingId} onPay={onPay} />
+            <ActivityRow
+              key={l.id}
+              link={l}
+              payingId={payingId}
+              onPay={onPay}
+              onRefund={onRefund}
+            />
           ),
         )
       )}
@@ -1395,10 +1499,12 @@ function ActivityRow({
   link: l,
   payingId,
   onPay,
+  onRefund,
 }: {
   link: BeamLink;
   payingId: string | null;
   onPay: (link: BeamLink) => void;
+  onRefund: (link: BeamLink) => void;
 }) {
   const ic = ACT_ICON[l.direction] ?? ACT_ICON.send;
   const sub =
@@ -1406,14 +1512,19 @@ function ActivityRow({
       ? l.direction === "request"
         ? "Waiting for payment"
         : "Waiting to be claimed"
-      : l.status === "claiming"
-        ? `${l.claimantEmail ?? short(l.claimantAddress)} is ${l.direction === "request" ? "paying" : "claiming"}`
-        : l.status === "sending"
-          ? "Settling on Arbitrum…"
-          : l.direction === "request"
-            ? "Received on Arbitrum"
-            : "Settled on Arbitrum";
+      : l.status === "funded"
+        ? "🔒 Funded in escrow — waiting to be claimed"
+        : l.status === "claiming"
+          ? `${l.claimantEmail ?? short(l.claimantAddress)} is ${l.direction === "request" ? "paying" : "claiming"}`
+          : l.status === "sending"
+            ? "Settling on Arbitrum…"
+            : l.status === "refunded"
+              ? "Refunded to you"
+              : l.direction === "request"
+                ? "Received on Arbitrum"
+                : "Settled on Arbitrum";
   const showPay = l.direction === "send" && l.status === "claiming";
+  const showRefund = l.direction === "send" && l.status === "funded";
   return (
     <div
       style={{
@@ -1479,15 +1590,40 @@ function ActivityRow({
           >
             {payingId === l.id ? "Sending…" : `Send ${usd(l.amountUsd)}`}
           </button>
+        ) : showRefund ? (
+          <button
+            onClick={() => onRefund(l)}
+            disabled={payingId === l.id}
+            style={{
+              background: "var(--field)",
+              border: "1px solid var(--line)",
+              borderRadius: 11,
+              padding: "9px 14px",
+              fontSize: 13,
+              fontWeight: 700,
+              color: "#3a453e",
+              cursor: payingId === l.id ? "default" : "pointer",
+              whiteSpace: "nowrap",
+              opacity: payingId === l.id ? 0.6 : 1,
+            }}
+          >
+            {payingId === l.id ? "…" : "Refund"}
+          </button>
         ) : (
           <Badge tone={l.status === "paid" ? "success" : "muted"}>
             {l.status === "paid"
               ? "Paid"
               : l.status === "sending"
                 ? "Sending"
-                : l.direction === "request"
-                  ? "Requested"
-                  : "Pending"}
+                : l.status === "funded"
+                  ? "Funded"
+                  : l.status === "refunded"
+                    ? "Refunded"
+                    : l.status === "expired"
+                      ? "Expired"
+                      : l.direction === "request"
+                        ? "Requested"
+                        : "Pending"}
           </Badge>
         )}
       </div>

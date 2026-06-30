@@ -8,7 +8,7 @@ import {
 } from "@/providers/UniversalAccountProvider";
 import { collectedUsd, REASON_META, type BeamLink } from "@/lib/links";
 import { usd } from "@/lib/format";
-import { arbiscanTokenTxns, universalxActivity } from "@/lib/chains";
+import { arbiscanTokenTxns, arbiscanTx, universalxActivity } from "@/lib/chains";
 import { GoogleGlyph } from "@/components/GoogleGlyph";
 import { SettleAnimation } from "@/components/SettleAnimation";
 
@@ -177,9 +177,22 @@ export default function ClaimClient({ id }: { id: string }) {
   const suggestedShare = link.splitWays
     ? Math.min(remaining || total / link.splitWays, total / link.splitWays)
     : remaining || total;
+  // For a "send" link the recipient wants to see *their* incoming USDC; for
+  // everything else the creator's address is the destination.
+  const proofAddr =
+    direction === "send" ? link.claimantAddress ?? address ?? link.senderAddress : link.senderAddress;
   const proofLinks = (
     <div className="mt-1 flex flex-wrap justify-center gap-2">
-      {lastSettle?.transactionId && (
+      {link.payoutTxId ? (
+        <a
+          className="btn btn-ghost !px-3 !py-2"
+          href={arbiscanTx(link.payoutTxId)}
+          target="_blank"
+          rel="noreferrer"
+        >
+          Payout tx
+        </a>
+      ) : lastSettle?.transactionId ? (
         <a
           className="btn btn-ghost !px-3 !py-2"
           href={universalxActivity(lastSettle.transactionId)}
@@ -188,10 +201,10 @@ export default function ClaimClient({ id }: { id: string }) {
         >
           Activity
         </a>
-      )}
+      ) : null}
       <a
         className="btn btn-ghost !px-3 !py-2"
-        href={arbiscanTokenTxns(link.senderAddress)}
+        href={arbiscanTokenTxns(proofAddr)}
         target="_blank"
         rel="noreferrer"
       >
@@ -393,8 +406,10 @@ export default function ClaimClient({ id }: { id: string }) {
               <div className="h-6 w-6 animate-spin rounded-full border-2 border-[var(--accent)] border-t-transparent" />
               <p className="text-sm text-[var(--muted)]">
                 {link.status === "sending"
-                  ? "On its way — settling on Arbitrum…"
-                  : `Waiting for ${from} to approve…`}
+                  ? "Paying you now — settling on Arbitrum…"
+                  : link.status === "funded"
+                    ? "Funds are locked for you — claiming…"
+                    : `Waiting for ${from} to approve…`}
               </p>
               <p className="text-xs text-[var(--muted)]">
                 You&apos;re all set — keep this page open.

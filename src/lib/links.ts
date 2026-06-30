@@ -15,7 +15,23 @@
  */
 
 export type Reason = "rent" | "split" | "gift" | "tip" | "none";
-export type LinkStatus = "pending" | "claiming" | "sending" | "paid";
+/**
+ * pending  = created, not yet funded (send) / not yet paid (request/campaign).
+ * funded   = escrow holds the money (send only) — payout to claimant is guaranteed.
+ * claiming = recipient opened the link and recorded their address.
+ * sending  = settlement in flight.
+ * paid     = settled on Arbitrum to the recipient.
+ * refunded = escrow returned to the sender (unclaimed/expired send link).
+ * expired  = past its claim window (no longer claimable).
+ */
+export type LinkStatus =
+  | "pending"
+  | "funded"
+  | "claiming"
+  | "sending"
+  | "paid"
+  | "refunded"
+  | "expired";
 /**
  * "send"    = creator pays the opener (walletless claim).
  * "request" = the opener pays the creator.
@@ -52,11 +68,17 @@ export type BeamLink = {
   /** The link's creator. For "send" they pay; otherwise they receive. */
   senderAddress: string;
   senderName?: string;
+  /** Creator's email — so we can tell them "you got paid". */
+  senderEmail?: string;
   status: LinkStatus;
   /** The other party (opener). For "send" they receive; for "request" they pay. */
   claimantAddress?: string;
   claimantEmail?: string;
   txId?: string;
+  /** Send/escrow: the sender's deposit tx into the relayer (locks the funds). */
+  fundTxId?: string;
+  /** Send/escrow: the relayer's payout tx to the recipient on Arbitrum. */
+  payoutTxId?: string;
   /** Split only: suggested number of payers (share = amountUsd / splitWays). */
   splitWays?: number;
   /** Campaign payments collected so far (split/fund/product). */
@@ -100,6 +122,7 @@ export type CreateInput = Pick<
   | "unlockUrl"
   | "senderAddress"
   | "senderName"
+  | "senderEmail"
   | "splitWays"
 >;
 
@@ -124,6 +147,8 @@ interface LinkStore {
   listBySender(senderAddress: string): Promise<BeamLink[]>;
   update(id: string, patch: Partial<BeamLink>): Promise<BeamLink | null>;
   addContribution(id: string, c: Contribution): Promise<BeamLink | null>;
+  /** Atomically claim a settled tx hash. False if it was already used (replay). */
+  markTxUsed(txId: string): Promise<boolean>;
   claimUsername(address: string, name: string): Promise<ClaimResult>;
   usernameToAddress(name: string): Promise<string | null>;
   addressToUsername(address: string): Promise<string | null>;
@@ -150,6 +175,7 @@ function buildLink(input: CreateInput): BeamLink {
       : {}),
     senderAddress: input.senderAddress,
     senderName: input.senderName,
+    senderEmail: input.senderEmail,
     status: "pending",
     ...(isCampaign(direction)
       ? { splitWays: direction === "split" ? input.splitWays : undefined, contributions: [] }
@@ -181,6 +207,7 @@ class MemoryStore implements LinkStore {
   private map = new Map<string, BeamLink>();
   private unameToAddr = new Map<string, string>();
   private addrToUname = new Map<string, string>();
+  private usedTx = new Set<string>();
 
   async create(input: CreateInput) {
     const link = buildLink(input);
@@ -209,6 +236,12 @@ class MemoryStore implements LinkStore {
     const next = applyContribution(link, c);
     this.map.set(id, next);
     return next;
+  }
+  async markTxUsed(txId: string) {
+    const k = txId.toLowerCase();
+    if (this.usedTx.has(k)) return false;
+    this.usedTx.add(k);
+    return true;
   }
   async claimUsername(address: string, name: string) {
     const n = normUsername(name);
@@ -316,6 +349,16 @@ class RedisStore implements LinkStore {
     await this.cmd(["SET", this.linkKey(id), JSON.stringify(next)]);
     return next;
   }
+  async markTxUsed(txId: string) {
+    // SET key value NX → "OK" when newly set, null when it already existed.
+    const res = await this.cmd<string | null>([
+      "SET",
+      `beam:tx:${txId.toLowerCase()}`,
+      "1",
+      "NX",
+    ]);
+    return res === "OK";
+  }
   async claimUsername(address: string, name: string) {
     const n = normUsername(name);
     if (!USERNAME_RE.test(n))
@@ -360,6 +403,7 @@ export const updateLink = (id: string, patch: Partial<BeamLink>) =>
   getStore().update(id, patch);
 export const addContribution = (id: string, c: Contribution) =>
   getStore().addContribution(id, c);
+export const markTxUsed = (txId: string) => getStore().markTxUsed(txId);
 export const claimUsername = (address: string, name: string) =>
   getStore().claimUsername(address, name);
 export const usernameToAddress = (name: string) =>
