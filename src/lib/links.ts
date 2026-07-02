@@ -177,6 +177,17 @@ interface LinkStore {
   addContribution(id: string, c: Contribution): Promise<BeamLink | null>;
   /** Atomically claim a settled tx id. False if it was already used (replay). */
   markTxUsed(txId: string): Promise<boolean>;
+  /** Release a tx id claimed by markTxUsed (when its verification failed). */
+  unmarkTxUsed(txId: string): Promise<void>;
+  /**
+   * Take an exclusive short-lived lock on a link so money-moving transitions
+   * (escrow payout / refund / contribution verify) are serialized across
+   * serverless instances. True when acquired; auto-expires after ttlSec.
+   */
+  acquireLock(id: string, ttlSec: number): Promise<boolean>;
+  releaseLock(id: string): Promise<void>;
+  /** Increment a rate-limit counter; returns the count in the current window. */
+  rateHit(key: string, windowSec: number): Promise<number>;
   /** Atomically add to the escrow's reserved (locked) total; returns the new total. */
   reserveEscrow(amountUsd: number): Promise<number>;
   /** Current reserved (locked, unpaid) escrow total across all funded links. */
@@ -233,6 +244,8 @@ class MemoryStore implements LinkStore {
   private addrToUname = new Map<string, string>();
   private usedTx = new Set<string>();
   private reserved = 0;
+  private locks = new Map<string, number>();
+  private rate = new Map<string, { count: number; resetAt: number }>();
 
   async create(input: CreateInput) {
     const link = buildLink(input);
@@ -267,6 +280,29 @@ class MemoryStore implements LinkStore {
     if (this.usedTx.has(k)) return false;
     this.usedTx.add(k);
     return true;
+  }
+  async unmarkTxUsed(txId: string) {
+    this.usedTx.delete(txId.toLowerCase());
+  }
+  async acquireLock(id: string, ttlSec: number) {
+    const now = Date.now();
+    const until = this.locks.get(id);
+    if (until && until > now) return false;
+    this.locks.set(id, now + ttlSec * 1000);
+    return true;
+  }
+  async releaseLock(id: string) {
+    this.locks.delete(id);
+  }
+  async rateHit(key: string, windowSec: number) {
+    const now = Date.now();
+    const hit = this.rate.get(key);
+    if (!hit || now > hit.resetAt) {
+      this.rate.set(key, { count: 1, resetAt: now + windowSec * 1000 });
+      return 1;
+    }
+    hit.count += 1;
+    return hit.count;
   }
   async reserveEscrow(amountUsd: number) {
     this.reserved = Math.max(0, this.reserved + amountUsd);
@@ -391,6 +427,28 @@ class RedisStore implements LinkStore {
     ]);
     return res === "OK";
   }
+  async unmarkTxUsed(txId: string) {
+    await this.cmd(["DEL", `beam:tx:${txId.toLowerCase()}`]);
+  }
+  async acquireLock(id: string, ttlSec: number) {
+    const res = await this.cmd<string | null>([
+      "SET",
+      `beam:lock:${id}`,
+      "1",
+      "NX",
+      "EX",
+      ttlSec,
+    ]);
+    return res === "OK";
+  }
+  async releaseLock(id: string) {
+    await this.cmd(["DEL", `beam:lock:${id}`]);
+  }
+  async rateHit(key: string, windowSec: number) {
+    const count = await this.cmd<number>(["INCR", `beam:rl:${key}`]);
+    if (count === 1) await this.cmd(["EXPIRE", `beam:rl:${key}`, windowSec]);
+    return count;
+  }
   async reserveEscrow(amountUsd: number) {
     const res = await this.cmd<string | number>([
       "INCRBYFLOAT",
@@ -448,6 +506,12 @@ export const updateLink = (id: string, patch: Partial<BeamLink>) =>
 export const addContribution = (id: string, c: Contribution) =>
   getStore().addContribution(id, c);
 export const markTxUsed = (txId: string) => getStore().markTxUsed(txId);
+export const unmarkTxUsed = (txId: string) => getStore().unmarkTxUsed(txId);
+export const acquireLinkLock = (id: string, ttlSec = 90) =>
+  getStore().acquireLock(id, ttlSec);
+export const releaseLinkLock = (id: string) => getStore().releaseLock(id);
+export const rateHit = (key: string, windowSec: number) =>
+  getStore().rateHit(key, windowSec);
 export const reserveEscrow = (amountUsd: number) =>
   getStore().reserveEscrow(amountUsd);
 export const getReservedEscrow = () => getStore().getReservedEscrow();

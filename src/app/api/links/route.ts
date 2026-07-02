@@ -6,13 +6,16 @@ import {
   type Reason,
 } from "@/lib/links";
 import { isEvmAddress, isEmail, safeUrl } from "@/lib/validate";
+import { requireProductionReady } from "@/lib/guard";
 import { rateLimit, tooMany } from "@/lib/ratelimit";
 
 const REASONS: Reason[] = ["rent", "split", "gift", "tip", "none"];
 
 // Create a payment link / campaign / product.
 export async function POST(req: NextRequest) {
-  if (!rateLimit(req, "create", 30)) return tooMany();
+  if (!(await rateLimit(req, "create", 30))) return tooMany();
+  const notReady = requireProductionReady();
+  if (notReady) return notReady;
   const body = await req.json().catch(() => null);
   if (!body) return NextResponse.json({ error: "bad json" }, { status: 400 });
 

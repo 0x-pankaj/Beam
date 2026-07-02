@@ -1,12 +1,11 @@
 /**
- * Minimal in-memory rate limiter for the API. Best-effort: on serverless it's
- * per-instance, but it still blunts bursts/abuse against the mutating routes
- * without external infra. Keyed by client IP + a per-route bucket.
+ * Rate limiter for the API, keyed by client IP + a per-route bucket. Counters
+ * live in the link store: Redis when configured (shared across serverless
+ * instances — real limiting), in-memory otherwise (local dev). Fails open on
+ * store errors so a Redis blip can't take the API down.
  */
 
-type Hit = { count: number; resetAt: number };
-const g = globalThis as unknown as { __beamRate?: Map<string, Hit> };
-const buckets = (g.__beamRate ??= new Map<string, Hit>());
+import { rateHit } from "./links";
 
 function clientIp(req: Request): string {
   const h = req.headers;
@@ -21,21 +20,21 @@ function clientIp(req: Request): string {
  * Returns true if the request is ALLOWED, false if it should be rejected (429).
  * `limit` requests are allowed per `windowMs` for each ip+bucket.
  */
-export function rateLimit(
+export async function rateLimit(
   req: Request,
   bucket: string,
   limit = 20,
   windowMs = 60_000,
-): boolean {
-  const key = `${bucket}:${clientIp(req)}`;
-  const now = Date.now();
-  const hit = buckets.get(key);
-  if (!hit || now > hit.resetAt) {
-    buckets.set(key, { count: 1, resetAt: now + windowMs });
+): Promise<boolean> {
+  try {
+    const count = await rateHit(
+      `${bucket}:${clientIp(req)}`,
+      Math.ceil(windowMs / 1000),
+    );
+    return count <= limit;
+  } catch {
     return true;
   }
-  hit.count += 1;
-  return hit.count <= limit;
 }
 
 /** Convenience: a 429 JSON Response for a blocked request. */

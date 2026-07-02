@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { getLink, updateLink, reserveEscrow, getReservedEscrow } from "@/lib/links";
 import { relayerAddress, relayerConfigured } from "@/lib/relayer";
 import { waitForUsdcBalance } from "@/lib/arbitrum";
+import { requireProductionReady } from "@/lib/guard";
 import { rateLimit, tooMany } from "@/lib/ratelimit";
+
+// On-chain deposit verification polls for the balance to land.
+export const maxDuration = 60;
 
 // The sender deposited USDC into the escrow relayer for a "send" link. We verify
 // the deposit ON-CHAIN by reconciling the relayer's real USDC balance against the
@@ -12,7 +16,9 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  if (!rateLimit(req, "fund", 15)) return tooMany();
+  if (!(await rateLimit(req, "fund", 15))) return tooMany();
+  const notReady = requireProductionReady();
+  if (notReady) return notReady;
   const { id } = await params;
   const link = await getLink(id);
   if (!link) return NextResponse.json({ error: "not found" }, { status: 404 });

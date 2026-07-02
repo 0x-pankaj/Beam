@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
 // Claim/update a handle for an address — gated by a signature proving the
 // caller controls that address (otherwise anyone could squat handles).
 export async function POST(req: NextRequest) {
-  if (!rateLimit(req, "username", 15)) return tooMany();
+  if (!(await rateLimit(req, "username", 15))) return tooMany();
   const body = await req.json().catch(() => null);
   const { address, name, signature } = body ?? {};
   if (!isEvmAddress(address) || !name)

@@ -7,6 +7,7 @@ import {
   type SettleResult,
 } from "@/providers/UniversalAccountProvider";
 import { campaignRaisedUsd, REASON_META, type BeamLink } from "@/lib/links";
+import { settleReport } from "@/lib/settle";
 import { usd } from "@/lib/format";
 import { arbiscanTokenTxns, arbiscanTx, universalxActivity } from "@/lib/chains";
 import { offRampUrl } from "@/lib/ramp";
@@ -82,7 +83,10 @@ export default function ClaimClient({ id }: { id: string }) {
   const signIn = (emailInput: string) => run(() => loginWithEmailOTP(emailInput));
   const signInGoogle = () => run(loginWithGoogle);
 
-  // REQUEST links: the opener pays the creator, settling on Arbitrum.
+  // REQUEST links: the opener pays the creator, settling on Arbitrum. With the
+  // escrow configured the money goes into the link's own deposit address — the
+  // server verifies it landed on-chain, then forwards it to the creator with a
+  // real Arbitrum tx hash. Direct-to-creator only as the dev fallback.
   const payRequest = () =>
     run(async () => {
       if (!link || !address) return;
@@ -94,13 +98,12 @@ export default function ClaimClient({ id }: { id: string }) {
       await fetch(`/api/links/${id}/sending`, { method: "POST" });
       await load();
       try {
-        const res = await sendUsdcToArbitrum(link.amountUsd, link.senderAddress);
+        const res = await sendUsdcToArbitrum(
+          link.amountUsd,
+          link.escrowAddress ?? link.senderAddress,
+        );
         setLastSettle(res);
-        await fetch(`/api/links/${id}/paid`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ txId: res.transactionId }),
-        });
+        await settleReport(`/api/links/${id}/paid`, { txId: res.transactionId });
         await load();
       } catch (e) {
         await fetch(`/api/links/${id}/claim`, {
@@ -121,10 +124,11 @@ export default function ClaimClient({ id }: { id: string }) {
       if (!link || !address || !amountUsd || Number(amountUsd) <= 0) return;
       const res = await sendUsdcToArbitrum(amountUsd, link.escrowAddress ?? link.senderAddress);
       setLastSettle(res);
-      await fetch(`/api/links/${id}/contribute`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ address, email, amountUsd, txId: res.transactionId }),
+      await settleReport(`/api/links/${id}/contribute`, {
+        address,
+        email,
+        amountUsd,
+        txId: res.transactionId,
       });
       setShareInput("");
       await load();
@@ -136,17 +140,15 @@ export default function ClaimClient({ id }: { id: string }) {
       if (!link || !address) return;
       const res = await sendUsdcToArbitrum(link.amountUsd, link.escrowAddress ?? link.senderAddress);
       setLastSettle(res);
-      const r = await fetch(`/api/links/${id}/contribute`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const data = await settleReport<{ unlocked?: string | null }>(
+        `/api/links/${id}/contribute`,
+        {
           address,
           email,
           amountUsd: link.amountUsd,
           txId: res.transactionId,
-        }),
-      });
-      const data = await r.json().catch(() => null);
+        },
+      );
       if (data?.unlocked) setUnlocked(data.unlocked);
       await load();
     });

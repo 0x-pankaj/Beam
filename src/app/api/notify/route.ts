@@ -6,7 +6,7 @@ import { rateLimit, tooMany } from "@/lib/ratelimit";
 // Optionally email a payment link to its recipient via Resend.
 // No-ops cleanly when RESEND_API_KEY isn't configured, so the app works without it.
 export async function POST(req: NextRequest) {
-  if (!rateLimit(req, "notify", 15)) return tooMany();
+  if (!(await rateLimit(req, "notify", 15))) return tooMany();
   const body = await req.json().catch(() => null);
   const { to, url, amountUsd, fromName, direction } = body ?? {};
   const safeLink = safeUrl(url);

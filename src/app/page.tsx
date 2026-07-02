@@ -18,6 +18,8 @@ import {
   type Reason,
 } from "@/lib/links";
 import { claimUrl, short, usd } from "@/lib/format";
+import { linkActionMessage } from "@/lib/auth";
+import { settleReport } from "@/lib/settle";
 import { chainName, SETTLEMENT_CHAIN_ID } from "@/lib/chains";
 import { onRampUrl, offRampUrl } from "@/lib/ramp";
 import { ReceiveModal } from "@/components/ReceiveModal";
@@ -272,7 +274,7 @@ function Landing() {
 /* ───────────────────────────── Dashboard (logged-in) ────────────────────── */
 
 function Dashboard() {
-  const { address, email, logout } = useMagic();
+  const { address, email, logout, signMessage } = useMagic();
   const {
     totalUsd,
     primaryAssets,
@@ -323,17 +325,34 @@ function Dashboard() {
     setToast(null);
     setSettle(null);
     try {
-      // Flip the recipient's view to "settling" the moment we start.
-      await fetch(`/api/links/${link.id}/sending`, { method: "POST" });
-      await loadLinks();
-      const res = await sendUsdcToArbitrum(link.amountUsd, link.claimantAddress);
-      await fetch(`/api/links/${link.id}/paid`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ txId: res.transactionId }),
-      });
+      const relayer = await fetch("/api/relayer")
+        .then((r) => r.json())
+        .catch(() => null);
+      if (link.direction === "send" && relayer?.configured && relayer.address) {
+        // Escrow path: deposit into the relayer, let the server verify it
+        // landed on-chain (fund), then the claim route pays the recipient out
+        // of escrow with a real Arbitrum tx hash. Nothing is taken on faith.
+        const res = await sendUsdcToArbitrum(link.amountUsd, relayer.address);
+        setSettle(res);
+        await settleReport(`/api/links/${link.id}/fund`, {
+          txId: res.transactionId,
+        });
+        await settleReport(`/api/links/${link.id}/claim`, {
+          claimantAddress: link.claimantAddress,
+          claimantEmail: link.claimantEmail,
+        });
+      } else {
+        // Dev fallback (no relayer): pay the claimant directly and report it.
+        // Flip the recipient's view to "settling" the moment we start.
+        await fetch(`/api/links/${link.id}/sending`, { method: "POST" });
+        await loadLinks();
+        const res = await sendUsdcToArbitrum(link.amountUsd, link.claimantAddress);
+        await settleReport(`/api/links/${link.id}/paid`, {
+          txId: res.transactionId,
+        });
+        setSettle(res);
+      }
       setToast(`Sent ${usd(link.amountUsd)} — settled on Arbitrum`);
-      setSettle(res);
       await Promise.all([loadLinks(), refreshBalance()]);
     } catch (e) {
       setToast(e instanceof Error ? e.message : String(e));
@@ -396,11 +415,20 @@ function Dashboard() {
   }, [offArbitrumUsdc]);
 
   // Collect a campaign's verified escrow balance to the creator's account.
+  // Creator-only: we prove it by signing the request with the Magic EOA.
   const collect = async (link: BeamLink) => {
     setPayingId(link.id);
     setToast(null);
     try {
-      const res = await fetch(`/api/links/${link.id}/collect`, { method: "POST" });
+      const ts = Date.now();
+      const signature = await signMessage(
+        linkActionMessage("collect", link.id, link.senderAddress, ts),
+      );
+      const res = await fetch(`/api/links/${link.id}/collect`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ts, signature }),
+      });
       const d = await res.json().catch(() => ({}));
       setToast(res.ok ? `Collected ${usd(d.amountUsd ?? 0)} — settled on Arbitrum` : d.error || "Collect failed");
       await Promise.all([loadLinks(), refreshBalance()]);
@@ -412,11 +440,20 @@ function Dashboard() {
   };
 
   // Reclaim an unclaimed, funded escrow link — money returns to the sender.
+  // Sender-only: signed so nobody else can cancel a payment they didn't make.
   const refund = async (link: BeamLink) => {
     setPayingId(link.id);
     setToast(null);
     try {
-      const res = await fetch(`/api/links/${link.id}/refund`, { method: "POST" });
+      const ts = Date.now();
+      const signature = await signMessage(
+        linkActionMessage("refund", link.id, link.senderAddress, ts),
+      );
+      const res = await fetch(`/api/links/${link.id}/refund`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ts, signature }),
+      });
       if (res.ok) setToast(`Refunded ${usd(link.amountUsd)} to you`);
       else {
         const e = await res.json().catch(() => ({}));
@@ -1216,15 +1253,10 @@ function LinkForm({
             setFunding("Locking funds in escrow…");
             const dep = await sendUsdcToArbitrum(amount, relayer.address);
             setFunding("Confirming deposit…");
-            const fres = await fetch(`/api/links/${link.id}/fund`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ txId: dep.transactionId }),
+            // Retries while the cross-chain deposit lands on Arbitrum.
+            await settleReport(`/api/links/${link.id}/fund`, {
+              txId: dep.transactionId,
             });
-            if (!fres.ok) {
-              const e = await fres.json().catch(() => ({}));
-              throw new Error(e.error || "Could not lock funds in escrow");
-            }
             link.status = "funded";
           }
         }

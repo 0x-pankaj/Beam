@@ -9,10 +9,12 @@ export async function GET(
   const { id } = await params;
   const link = await getLink(id);
   if (!link) return NextResponse.json({ error: "not found" }, { status: 404 });
-  // Campaign links carry their escrow deposit address so contributors pay into
-  // the verifiable per-campaign address (falls back to direct when unconfigured).
-  const escrowAddress = isCampaign(link.direction)
-    ? campaignDepositAddress(id) ?? undefined
-    : undefined;
+  // Campaign and request links carry their escrow deposit address so payers pay
+  // into the verifiable per-link address — the server can then prove the money
+  // landed before marking anything paid (falls back to direct when unconfigured).
+  const escrowAddress =
+    isCampaign(link.direction) || link.direction === "request"
+      ? campaignDepositAddress(id) ?? undefined
+      : undefined;
   return NextResponse.json({ ...publicLink(link), escrowAddress });
 }
