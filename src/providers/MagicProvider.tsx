@@ -25,6 +25,8 @@ type MagicContextType = {
   address: string | null;
   email: string | null;
   isLoggedIn: boolean;
+  /** True while a previous session is being restored on page load. */
+  restoring: boolean;
   googleEnabled: boolean;
   loginWithEmailOTP: (email: string) => Promise<string>;
   loginWithGoogle: () => Promise<string>;
@@ -38,6 +40,7 @@ const MagicContext = createContext<MagicContextType>({
   address: null,
   email: null,
   isLoggedIn: false,
+  restoring: true,
   googleEnabled: false,
   loginWithEmailOTP: async () => "",
   loginWithGoogle: async () => "",
@@ -60,10 +63,14 @@ export const MagicProvider = ({ children }: { children: ReactNode }) => {
   const [magic, setMagic] = useState<Magic | null>(null);
   const [address, setAddress] = useState<string | null>(null);
   const [email, setEmail] = useState<string | null>(null);
+  const [restoring, setRestoring] = useState(true);
 
   useEffect(() => {
     const key = process.env.NEXT_PUBLIC_MAGIC_API_KEY;
-    if (!key) return;
+    if (!key) {
+      setRestoring(false);
+      return;
+    }
 
     const m = new MagicBase(key, {
       extensions: [
@@ -80,15 +87,30 @@ export const MagicProvider = ({ children }: { children: ReactNode }) => {
     });
     setMagic(m);
 
-    // Restore session if the user is still logged in.
-    m.user.isLoggedIn().then(async (loggedIn) => {
-      if (loggedIn) {
-        const addr = await readAddress(m);
-        setAddress(addr);
-        setEmail(localStorage.getItem("user_email"));
-        localStorage.setItem("user", addr);
-      }
-    });
+    // Optimistic restore: show the account instantly from the last session
+    // hint so a refresh never flashes the login page, then verify with Magic
+    // and clear if the session actually expired.
+    const cached = localStorage.getItem("user");
+    if (cached) {
+      setAddress(cached);
+      setEmail(localStorage.getItem("user_email"));
+    }
+    m.user
+      .isLoggedIn()
+      .then(async (loggedIn) => {
+        if (loggedIn) {
+          const addr = await readAddress(m);
+          setAddress(addr);
+          setEmail(localStorage.getItem("user_email"));
+          localStorage.setItem("user", addr);
+        } else {
+          setAddress(null);
+          setEmail(null);
+          localStorage.removeItem("user");
+          localStorage.removeItem("user_email");
+        }
+      })
+      .finally(() => setRestoring(false));
   }, []);
 
   const loginWithEmailOTP = useCallback(
@@ -148,13 +170,14 @@ export const MagicProvider = ({ children }: { children: ReactNode }) => {
       address,
       email,
       isLoggedIn: !!address,
+      restoring,
       googleEnabled: !!GOOGLE_CLIENT_ID,
       loginWithEmailOTP,
       loginWithGoogle,
       signMessage,
       logout,
     }),
-    [magic, address, email, loginWithEmailOTP, loginWithGoogle, signMessage, logout],
+    [magic, address, email, restoring, loginWithEmailOTP, loginWithGoogle, signMessage, logout],
   );
 
   return <MagicContext.Provider value={value}>{children}</MagicContext.Provider>;

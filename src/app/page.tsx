@@ -50,8 +50,17 @@ const scrollToId = (id: string) =>
   document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
 
 export default function Home() {
-  const { isLoggedIn } = useMagic();
-  return isLoggedIn ? <Dashboard /> : <Landing />;
+  const { isLoggedIn, restoring } = useMagic();
+  if (isLoggedIn) return <Dashboard />;
+  // Hold a neutral splash while the previous session restores, so a refresh
+  // never flashes the logged-out landing page at a logged-in user.
+  if (restoring)
+    return (
+      <main className="beam-shell items-center justify-center">
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-[var(--accent)] border-t-transparent" />
+      </main>
+    );
+  return <Landing />;
 }
 
 /* ───────────────────────────── Landing (logged-out) ─────────────────────── */
