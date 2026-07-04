@@ -709,11 +709,8 @@ function Dashboard() {
           style={{
             flex: 1,
             width: "100%",
-            maxWidth: 1180,
-            // Left-align against the sidebar (extra room spills right) so wide
-            // desktops don't leave a big gap between the nav and the content.
-            // Below the max width the content just fills the column.
-            margin: "0 auto 0 0",
+            maxWidth: 1120,
+            margin: "0 auto",
             padding: "clamp(16px,3.5vw,36px)",
             paddingBottom: 96,
           }}
