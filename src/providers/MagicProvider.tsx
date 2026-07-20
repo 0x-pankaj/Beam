@@ -13,7 +13,7 @@ import {
   useMemo,
   useState,
 } from "react";
-import { DELEGATION_CHAIN_ID } from "@/lib/chains";
+import { CHAIN, DELEGATION_CHAIN_ID } from "@/lib/chains";
 import { emailFromIdToken, promptGoogleOneTap } from "@/lib/gsi";
 
 export type Magic = MagicBase<[EVMExtension, OAuthExtension]>;
@@ -80,6 +80,20 @@ export const MagicProvider = ({ children }: { children: ReactNode }) => {
               process.env.NEXT_PUBLIC_BASE_RPC_URL || "https://mainnet.base.org",
             chainId: DELEGATION_CHAIN_ID,
             default: true,
+          },
+          // Every chain ensureDelegated() may switch to needs to be listed
+          // here — Magic's EVM extension rejects switchChain to unknown ids.
+          {
+            rpcUrl:
+              process.env.NEXT_PUBLIC_ARBITRUM_RPC_URL ||
+              "https://arb1.arbitrum.io/rpc",
+            chainId: CHAIN.ARBITRUM,
+          },
+          {
+            rpcUrl:
+              process.env.NEXT_PUBLIC_ETH_RPC_URL ||
+              "https://eth.llamarpc.com",
+            chainId: CHAIN.ETHEREUM,
           },
         ]),
         new OAuthExtension(),
