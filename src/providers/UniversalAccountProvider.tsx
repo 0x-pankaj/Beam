@@ -63,7 +63,7 @@ type UAContextType = {
   isDelegated: boolean;
   loading: boolean;
   refreshBalance: () => Promise<void>;
-  ensureDelegated: () => Promise<void>;
+  ensureDelegated: (chainId?: number) => Promise<void>;
   /** Move `amount` USDC cross-chain so it settles on Arbitrum to `receiver`. */
   sendUsdcToArbitrum: (amount: string, receiver: string) => Promise<SettleResult>;
   /** USDC the user holds OFF Arbitrum (e.g. inbound deposits on Base) — sweepable. */
@@ -174,48 +174,85 @@ export const UniversalAccountProvider = ({
     [magic],
   );
 
-  // Pre-delegate the EOA on the delegation chain via a Type-4 transaction.
+  // Pre-delegate the EOA on a concrete chain via a Type-4 transaction.
   // Magic cannot sign chain-agnostic (chainId 0) authorizations, so we must
-  // delegate on a concrete chain before sending UA transactions.
-  const ensureDelegated = useCallback(async () => {
-    if (!universalAccount || !magic || !address)
-      throw new Error("Account not ready");
+  // delegate on a concrete chain before sending UA transactions there.
+  const ensureDelegated = useCallback(
+    async (chainId: number = DELEGATION_CHAIN_ID) => {
+      if (!universalAccount || !magic || !address)
+        throw new Error("Account not ready");
 
-    const deployments = await universalAccount.getEIP7702Deployments();
-    const d = (deployments as Deployment[]).find(
-      (x) => x.chainId === DELEGATION_CHAIN_ID,
-    );
-    if (d?.isDelegated) {
+      const deployments = await universalAccount.getEIP7702Deployments();
+      const d = (deployments as Deployment[]).find(
+        (x) => x.chainId === chainId,
+      );
+      if (d?.isDelegated) {
+        await refreshDelegationStatus();
+        return;
+      }
+
+      const m = magic as unknown as Magic7702;
+      await m.evm.switchChain(chainId);
+      const [auth] = await universalAccount.getEIP7702Auth([chainId]);
+      const authorization = await signEip7702Auth(
+        auth.address,
+        chainId,
+        auth.nonce + 1,
+      );
+      await m.wallet.send7702Transaction({
+        to: address,
+        data: "0x",
+        authorizationList: [authorization],
+      });
+      // Wait until Particle's backend sees the delegation — the follow-up
+      // transfer is only valid once the chain reports the EOA as delegated.
+      for (let i = 0; i < 15; i++) {
+        const ds =
+          (await universalAccount.getEIP7702Deployments()) as Deployment[];
+        if (ds.find((x) => x.chainId === chainId)?.isDelegated) break;
+        await new Promise((r) => setTimeout(r, 2000));
+      }
       await refreshDelegationStatus();
-      return;
-    }
-
-    const m = magic as unknown as Magic7702;
-    await m.evm.switchChain(DELEGATION_CHAIN_ID);
-    const [auth] = await universalAccount.getEIP7702Auth([DELEGATION_CHAIN_ID]);
-    const authorization = await signEip7702Auth(
-      auth.address,
-      DELEGATION_CHAIN_ID,
-      auth.nonce + 1,
-    );
-    await m.wallet.send7702Transaction({
-      to: address,
-      data: "0x",
-      authorizationList: [authorization],
-    });
-    await refreshDelegationStatus();
-  }, [universalAccount, magic, address, signEip7702Auth, refreshDelegationStatus]);
+    },
+    [universalAccount, magic, address, signEip7702Auth, refreshDelegationStatus],
+  );
 
   const sendUsdcToArbitrum = useCallback(
     async (amount: string, receiver: string) => {
       if (!universalAccount || !magic || !address)
         throw new Error("Account not ready");
 
-      const transaction = await universalAccount.createTransferTransaction({
+      let transaction = await universalAccount.createTransferTransaction({
         token: { chainId: SETTLEMENT_CHAIN_ID, address: SETTLEMENT_USDC },
         amount,
         receiver,
       });
+
+      // Magic cannot sign the chain-agnostic (chainId 0) authorizations the
+      // SDK requests inline — signing them with a concrete chainId fails at
+      // the bundler with AA24. Pre-delegate those chains with a real Type-4
+      // tx instead, then rebuild the transfer (its userOps then carry no
+      // pending delegation).
+      const chainsNeedingDelegation = Array.from(
+        new Set(
+          transaction.userOps
+            .filter(
+              (op) =>
+                op.eip7702Auth &&
+                !op.eip7702Delegated &&
+                !op.eip7702Auth.chainId,
+            )
+            .map((op) => op.chainId),
+        ),
+      );
+      if (chainsNeedingDelegation.length) {
+        for (const c of chainsNeedingDelegation) await ensureDelegated(c);
+        transaction = await universalAccount.createTransferTransaction({
+          token: { chainId: SETTLEMENT_CHAIN_ID, address: SETTLEMENT_USDC },
+          amount,
+          receiver,
+        });
+      }
 
       // Inline EIP-7702 authorizations for any pending delegation in the userOps.
       const authorizations: EIP7702Authorization[] = [];
@@ -265,7 +302,14 @@ export const UniversalAccountProvider = ({
         sourceChainIds,
       };
     },
-    [universalAccount, magic, address, signEip7702Auth, refreshBalance],
+    [
+      universalAccount,
+      magic,
+      address,
+      signEip7702Auth,
+      refreshBalance,
+      ensureDelegated,
+    ],
   );
 
   // USDC sitting on chains other than Arbitrum (e.g. someone paid the Receive QR
