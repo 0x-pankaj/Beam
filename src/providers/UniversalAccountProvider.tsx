@@ -20,6 +20,7 @@ import {
   DELEGATION_CHAIN_ID,
   SETTLEMENT_CHAIN_ID,
   SETTLEMENT_USDC,
+  USDC,
 } from "@/lib/chains";
 
 type EIP7702Authorization = { userOpHash: string; signature: string };
@@ -64,8 +65,13 @@ type UAContextType = {
   loading: boolean;
   refreshBalance: () => Promise<void>;
   ensureDelegated: (chainId?: number) => Promise<void>;
-  /** Move `amount` USDC cross-chain so it settles on Arbitrum to `receiver`. */
-  sendUsdcToArbitrum: (amount: string, receiver: string) => Promise<SettleResult>;
+  /** Move `amount` USDC so it settles to `receiver` — on Arbitrum by default,
+   *  or on `tokenChainId` when given (same-chain works during solver outages). */
+  sendUsdcToArbitrum: (
+    amount: string,
+    receiver: string,
+    tokenChainId?: number,
+  ) => Promise<SettleResult>;
   /** USDC the user holds OFF Arbitrum (e.g. inbound deposits on Base) — sweepable. */
   offArbitrumUsdc: number;
   /** Sweep all off-Arbitrum USDC onto Arbitrum (a UA self-transfer). */
@@ -217,13 +223,21 @@ export const UniversalAccountProvider = ({
     [universalAccount, magic, address, signEip7702Auth, refreshDelegationStatus],
   );
 
+  // Deliver `amount` USDC to `receiver` on `tokenChainId` (default: the
+  // Arbitrum settlement chain). Same-chain deliveries (e.g. a Base→Base
+  // withdrawal) work even when Particle's cross-chain solver is unavailable.
   const sendUsdcToArbitrum = useCallback(
-    async (amount: string, receiver: string) => {
+    async (
+      amount: string,
+      receiver: string,
+      tokenChainId: number = SETTLEMENT_CHAIN_ID,
+    ) => {
       if (!universalAccount || !magic || !address)
         throw new Error("Account not ready");
+      const tokenAddress = USDC[tokenChainId] ?? SETTLEMENT_USDC;
 
       let transaction = await universalAccount.createTransferTransaction({
-        token: { chainId: SETTLEMENT_CHAIN_ID, address: SETTLEMENT_USDC },
+        token: { chainId: tokenChainId, address: tokenAddress },
         amount,
         receiver,
       });
@@ -248,7 +262,7 @@ export const UniversalAccountProvider = ({
       if (chainsNeedingDelegation.length) {
         for (const c of chainsNeedingDelegation) await ensureDelegated(c);
         transaction = await universalAccount.createTransferTransaction({
-          token: { chainId: SETTLEMENT_CHAIN_ID, address: SETTLEMENT_USDC },
+          token: { chainId: tokenChainId, address: tokenAddress },
           amount,
           receiver,
         });
@@ -293,7 +307,7 @@ export const UniversalAccountProvider = ({
         new Set(
           (transaction.depositTokens ?? [])
             .map((d) => d.token.chainId)
-            .filter((c) => c !== SETTLEMENT_CHAIN_ID),
+            .filter((c) => c !== tokenChainId),
         ),
       );
       return {

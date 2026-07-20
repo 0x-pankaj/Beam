@@ -14,7 +14,7 @@
 import { useState } from "react";
 import { useMagic } from "@/providers/MagicProvider";
 import { useUniversalAccount } from "@/providers/UniversalAccountProvider";
-import { universalxActivity } from "@/lib/chains";
+import { CHAIN, universalxActivity } from "@/lib/chains";
 
 export default function SpikePage() {
   const { address, isLoggedIn, loginWithEmailOTP, logout } = useMagic();
@@ -144,6 +144,28 @@ export default function SpikePage() {
               className="rounded-lg bg-black px-3 py-2 font-semibold text-white disabled:opacity-50"
             >
               {busy === "send" ? "Settling…" : "Send & settle on Arbitrum"}
+            </button>
+
+            {/* Same-chain escape hatch: delivers USDC on Base directly, which
+                keeps working even when cross-chain routing is under
+                maintenance. Uses the same UA + Magic signing path. */}
+            <button
+              disabled={busy !== null}
+              onClick={() =>
+                run("withdraw-base", async () => {
+                  const res = await sendUsdcToArbitrum(
+                    amount,
+                    receiver || address!,
+                    CHAIN.BASE,
+                  );
+                  setTxId(res.transactionId);
+                })
+              }
+              className="rounded-lg border border-black px-3 py-2 font-semibold disabled:opacity-50"
+            >
+              {busy === "withdraw-base"
+                ? "Sending on Base…"
+                : "Withdraw USDC on Base (same-chain)"}
             </button>
           </section>
         </>
