@@ -42,26 +42,27 @@ The sender never chose a chain, never saw gas, never signed a raw transaction. T
 
 ---
 
-## The 60-second demo
-
-1. **Alice signs in with Google** (Magic). Her ordinary EOA is upgraded *in place* into a Particle Universal Account via an EIP-7702 Type-4 transaction — same address, new superpowers. The UI calls this "setting up your account."
-2. Her dashboard shows **one balance in USD** — Particle UA aggregates her assets across Base, Ethereum, Arbitrum and more. No chain picker exists anywhere in the app.
-3. She types **$1**, taps a preset (Rent / Split / Gift / Tip) → **"Lock funds & create link."** Her UA routes USDC from wherever it lives into Beam's escrow **on Arbitrum**; the link goes live only when the money has *verifiably* landed on-chain.
-4. **Bob clicks the link. He has no wallet.** He signs in with Google — Magic instantly gives him an address; Particle makes it chain-abstracted.
-5. The escrow pays Bob **native USDC on Arbitrum**, with a real tx hash → confetti, "**$1.00 received — Settled on Arbitrum**", *View on Arbiscan*.
-6. Bob can tap **Cash out to your bank** (fiat off-ramp via Particle Ramp) or just keep it — logging in with the same Google account anywhere shows his balance.
-
----
-
 ## Screenshots
 
-| | |
-|---|---|
-| ![Landing](docs/screenshots/landing.jpg) | **Landing / login** — Google-first, walletless language. "Powered by Particle Universal Accounts · Magic · Settles on Arbitrum." |
-| ![Dashboard](docs/screenshots/dashboard.jpg) | **Dashboard** — one USD balance aggregated across chains (Base + Arbitrum shown), Send/Request/Split/Pay, live activity feed, escrow-funded link with QR ready to share. |
-| ![Claim](docs/screenshots/claim-received.jpg) | **Claim page (recipient)** — "$1.00 received — Settled on Arbitrum," with *Payout tx* and *View on Arbiscan*, plus one-tap fiat cash-out. |
-| ![Pay anyone](docs/screenshots/pay-anyone.jpg) | **Pay anyone** — pay a raw address, an ENS name, or scan a QR; they receive USDC on Arbitrum regardless of where the payer's funds live. |
-| ![Spike](docs/screenshots/spike.jpg) | **/spike** — the transparent tech-proof page: Magic EOA = Universal Account, unified balance, live 7702 delegation status. |
+**Landing / login** — Google-first, walletless language. "Powered by Particle Universal Accounts · Magic · Settles on Arbitrum."
+
+![Landing](docs/screenshots/landing.jpg)
+
+**Dashboard** — one USD balance aggregated across chains (Base + Arbitrum shown), Send/Request/Split/Pay, live activity feed, escrow-funded link with QR ready to share.
+
+![Dashboard](docs/screenshots/dashboard.jpg)
+
+**Claim page (recipient)** — "$1.00 received — Settled on Arbitrum," with *Payout tx* and *View on Arbiscan*, plus one-tap fiat cash-out.
+
+![Claim](docs/screenshots/claim-received.jpg)
+
+**Pay anyone** — pay a raw address, an ENS name, or scan a QR; they receive USDC on Arbitrum regardless of where the payer's funds live.
+
+![Pay anyone](docs/screenshots/pay-anyone.jpg)
+
+**/spike** — the transparent tech-proof page: Magic EOA = Universal Account, unified balance, live 7702 delegation status.
+
+![Spike](docs/screenshots/spike.jpg)
 
 ---
 
